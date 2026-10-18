@@ -32,6 +32,9 @@ fnc count_floats(List<float> values): int {
 // Full validation precedes ALL forward or backward output writes.
 pub fnc validate_tape(TapeF64 tape): Result<int, String> {
   val int n = count_ints(tape.opcode);
+  if n < 1 || n > 8192; do
+    return Err("tape node count outside P0 limits");
+  fi
   if count_ints(tape.left) != n; do
     return Err("left edge count mismatch");
   fi

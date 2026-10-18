@@ -10,6 +10,7 @@
 ## Limitations / safety gates
 - This is a **scalar reference differentiator**, not yet tensor autograd or an automatic tape recorder. It is intentionally implemented in pure `.ores`.
 - `List<T>` backing references are not yet enforced as immutable/unique across all compiler backends. The caller must not modify the tape or saved activations between validation and computation, and must not alias mutable output with input.
+- Tape admission rejects nonfinite leaf values; backward admission rejects nonfinite seed/saved activations. Intermediate arithmetic overflow and atomic result publication still need a transactional scratch/lease design.
 - No claims about exact floating-point exceptional-value semantics, higher-order gradients, JVP, broadcasting, dynamic control flow, in-place version detection, or cross-backend execution.
 - `backward_f64_into` trusts that `forward_values` were produced by the same tape generation. A future graph-generation identity and pinned activation lease must enforce this.
 

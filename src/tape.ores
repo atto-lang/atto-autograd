@@ -1,5 +1,5 @@
 // Pure-Oreslang bounded scalar reverse-mode differentiation.
-// One node per index; opcode 0=leaf, 1=add, 2=multiply.
+// Opcode 0=leaf, 1=add, 2=multiply, 3=ReLU (zero subgradient at zero).
 // Edges must point to STRICTLY earlier nodes: a verified DAG, no cycles.
 // Storage is caller-owned List<T> until unique buffer capabilities land.
 define pub class TapeF64 as
@@ -51,14 +51,20 @@ pub fnc validate_tape(TapeF64 tape): Result<int, String> {
         return Err("leaf value must be finite");
       fi
     else
-      if op != 1 && op != 2; do
+      if op != 1 && op != 2 && op != 3; do
         return Err("unsupported operation");
       fi
       if tape.left[i] < 0 || tape.left[i] >= i; do
         return Err("left operand must precede node");
       fi
-      if tape.right[i] < 0 || tape.right[i] >= i; do
-        return Err("right operand must precede node");
+      if op == 3; do
+        if tape.right[i] != -1; do
+          return Err("relu must have sentinel right edge");
+        fi
+      else
+        if tape.right[i] < 0 || tape.right[i] >= i; do
+          return Err("right operand must precede node");
+        fi
       fi
     fi
   done

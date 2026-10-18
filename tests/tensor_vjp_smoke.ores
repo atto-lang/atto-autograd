@@ -17,6 +17,14 @@ pub routine main(): void {
   Assert.equal_throws(grad_right[0], 5.0);
   Assert.equal_throws(grad_right[1], 7.0);
   Assert.equal_throws(grad_right[2], 9.0);
+  val List<float> products = arr[0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  Assert.true_throws(mul_operand_vjp_f64_checked_into(left, right, upstream, true, products, scratch_left, grad_left).is_ok());
+  Assert.equal_throws(grad_left[0], 32.0);
+  Assert.equal_throws(grad_left[1], 77.0);
+  Assert.true_throws(mul_operand_vjp_f64_checked_into(left, right, upstream, false, products, scratch_right, grad_right).is_ok());
+  Assert.equal_throws(grad_right[0], 14.0);
+  Assert.equal_throws(grad_right[1], 19.0);
+  Assert.equal_throws(grad_right[2], 24.0);
   stdio.println("ORES_ML_TENSOR_VJP_SMOKE_PASS");
   return;
 }

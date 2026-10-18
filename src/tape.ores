@@ -77,6 +77,9 @@ pub fnc forward_f64_into(
   if count_floats(output) != n; do
     return Err("forward output length mismatch");
   fi
+  if output is tape.leaf_values; do
+    return Err("forward output aliases tape inputs");
+  fi
   for int i = 0; i < n; i++ do
     val int op = tape.opcode[i];
     if op == 0; do
@@ -89,6 +92,9 @@ pub fnc forward_f64_into(
       else
         output[i] = output[a] * output[b];
       fi
+    fi
+    if !finite_f64(output[i]); do
+      return Err("nonfinite forward intermediate");
     fi
   done
   return Ok(true);
@@ -117,6 +123,9 @@ pub fnc backward_f64_into(
   fi
   if count_floats(gradients) != n; do
     return Err("gradient output length mismatch");
+  fi
+  if gradients is forward_values || gradients is tape.leaf_values; do
+    return Err("gradient output aliases saved inputs");
   fi
   if !finite_f64(seed); do
     return Err("nonfinite backward seed");

@@ -1,0 +1,97 @@
+// Native Oreslang tensor-valued VJP proof slice for broadcast add/multiply.
+// Tensor algorithms live in .ores, not host-language ML frameworks.
+// Caller-owned scratch/output references require compiler-proven unique loans
+// before release; identity guards here do NOT prove transitive alias safety.
+import class TensorF64 from '../../oreslang-tensor/src/tensor';
+import fnc validate_tensor from '../../oreslang-tensor/src/tensor';
+import fnc validate_broadcast, broadcast_mul_f64_into from '../../oreslang-tensor/src/broadcast';
+import fnc sum_to_shape_f64_checked_into from '../../oreslang-tensor/src/gradients';
+
+fnc length_f64(List<float> values): int {
+  let int n = 0;
+  for const value of values do
+    n = n + 1;
+  done
+  return n;
+}
+
+// VJP of z = left + right, with independently reduced gradients for one
+// caller-chosen operand. Exact shape contract checked before any publication.
+pub fnc add_operand_vjp_f64_checked_into(
+  TensorF64 left,
+  TensorF64 right,
+  TensorF64 upstream,
+  bool with_respect_to_left,
+  List<float> mut reduction_scratch,
+  List<float> mut output
+): Result<bool, String> {
+  if validate_tensor(upstream).is_err(); do
+    return Err("invalid upstream add gradient");
+  fi
+  if validate_broadcast(left, right, upstream.shape, length_f64(upstream.values)).is_err(); do
+    return Err("forward broadcast contract mismatch");
+  fi
+  if reduction_scratch is left.values || reduction_scratch is right.values ||
+     output is left.values || output is right.values; do
+    return Err("gradient destination aliases forward tensor");
+  fi
+  if with_respect_to_left; do
+    return sum_to_shape_f64_checked_into(
+      upstream, left.shape, reduction_scratch, output
+    );
+  fi
+  return sum_to_shape_f64_checked_into(
+    upstream, right.shape, reduction_scratch, output
+  );
+}
+
+// VJP of z = left * right:
+// dleft = sum_to_shape(upstream * right, left.shape)
+// dright = sum_to_shape(upstream * left, right.shape)
+// products and reduction_scratch MUST be distinct from all inputs/outputs.
+// The checked multiplication and reduction preflight protect output from
+// shape/nonfinite errors; scratch may be partially written on failure.
+pub fnc mul_operand_vjp_f64_checked_into(
+  TensorF64 left,
+  TensorF64 right,
+  TensorF64 upstream,
+  bool with_respect_to_left,
+  List<float> mut products,
+  List<float> mut reduction_scratch,
+  List<float> mut output
+): Result<bool, String> {
+  if validate_tensor(upstream).is_err(); do
+    return Err("invalid upstream multiply gradient");
+  fi
+  val int n = length_f64(upstream.values);
+  if validate_broadcast(left, right, upstream.shape, n).is_err(); do
+    return Err("forward multiply broadcast mismatch");
+  fi
+  if length_f64(products) != n; do
+    return Err("weighted-gradient product length mismatch");
+  fi
+  if products is reduction_scratch || products is output ||
+     reduction_scratch is output; do
+    return Err("multiply gradient scratch buffers overlap");
+  fi
+  if products is left.values || products is right.values ||
+     products is upstream.values ||
+     reduction_scratch is left.values || reduction_scratch is right.values ||
+     output is left.values || output is right.values ||
+     reduction_scratch is upstream.values || output is upstream.values; do
+    return Err("multiply gradient destination aliases input");
+  fi
+
+  if with_respect_to_left; do
+    if broadcast_mul_f64_into(upstream, right, upstream.shape, products).is_err(); do
+      return Err("invalid weighted left gradient");
+    fi
+    val TensorF64 weighted = new TensorF64(upstream.shape, products);
+    return sum_to_shape_f64_checked_into(weighted, left.shape, reduction_scratch, output);
+  fi
+  if broadcast_mul_f64_into(upstream, left, upstream.shape, products).is_err(); do
+    return Err("invalid weighted right gradient");
+  fi
+  val TensorF64 weighted = new TensorF64(upstream.shape, products);
+  return sum_to_shape_f64_checked_into(weighted, right.shape, reduction_scratch, output);
+}

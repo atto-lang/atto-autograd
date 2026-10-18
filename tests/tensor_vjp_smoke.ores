@@ -25,6 +25,9 @@ pub routine main(): void {
   Assert.equal_throws(grad_right[0], 14.0);
   Assert.equal_throws(grad_right[1], 19.0);
   Assert.equal_throws(grad_right[2], 24.0);
+  val TensorF64 invalid = new TensorF64(arr[3], arr[1.0, 2.0, 3.0]);
+  Assert.true_throws(add_operand_vjp_f64_checked_into(left, invalid, upstream, true, scratch_left, grad_left).is_err());
+  Assert.equal_throws(grad_left[0], 32.0);
   stdio.println("ORES_ML_TENSOR_VJP_SMOKE_PASS");
   return;
 }

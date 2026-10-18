@@ -159,9 +159,17 @@ pub fnc backward_f64_into(
         if saved != forward_values[a] + forward_values[b]; do
           return Err("stale sum activation");
         fi
-      else
+      elif op == 2; do
         if saved != forward_values[a] * forward_values[b]; do
           return Err("stale product activation");
+        fi
+      else
+        let float expected = 0.0;
+        if forward_values[a] > 0.0; do
+          expected = forward_values[a];
+        fi
+        if saved != expected; do
+          return Err("stale relu activation");
         fi
       fi
     fi

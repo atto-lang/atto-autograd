@@ -2,7 +2,7 @@
 // One node per index; opcode 0=leaf, 1=add, 2=multiply.
 // Edges must point to STRICTLY earlier nodes: a verified DAG, no cycles.
 // Storage is caller-owned List<T> until unique buffer capabilities land.
-define class TapeF64 as
+define pub class TapeF64 as
   pub val List<int> opcode;
   pub val List<int> left;
   pub val List<int> right;

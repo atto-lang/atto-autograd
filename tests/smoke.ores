@@ -1,6 +1,8 @@
 import module Assert from "std/assert";
 import class TapeF64 from "../src/tape";
 import fnc validate_tape, forward_f64_into, backward_f64_into from "../src/tape";
+import fnc forward_checked_into from "../src/forward_checked";
+import fnc backward_checked_into from "../src/backward_checked";
 
 fnc f(float x): float {
   return (x * x) + x;

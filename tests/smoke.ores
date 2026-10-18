@@ -40,6 +40,7 @@ pub routine main(): void {
   Assert.true_throws(backward_f64_into(tape, values, 9, 1.0, grads).is_err());
   Assert.equal_throws(grads[0], 7.0);
 
+  Assert.true_throws(backward_f64_into(tape, arr[3.0, 0.0, 0.0], 2, 1.0, grads).is_err());
   stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
   return;
 }

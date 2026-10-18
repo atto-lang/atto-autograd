@@ -95,8 +95,14 @@ pub fnc forward_f64_into(
       val int b = tape.right[i];
       if op == 1; do
         output[i] = output[a] + output[b];
-      else
+      elif op == 2; do
         output[i] = output[a] * output[b];
+      else
+        if output[a] > 0.0; do
+          output[i] = output[a];
+        else
+          output[i] = 0.0;
+        fi
       fi
     fi
     if !finite_f64(output[i]); do

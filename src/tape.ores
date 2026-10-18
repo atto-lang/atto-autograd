@@ -1,0 +1,135 @@
+// Pure-Oreslang bounded scalar reverse-mode differentiation.
+// One node per index; opcode 0=leaf, 1=add, 2=multiply.
+// Edges must point to STRICTLY earlier nodes: a verified DAG, no cycles.
+// Storage is caller-owned List<T> until unique buffer capabilities land.
+define class TapeF64 as
+  pub val List<int> opcode;
+  pub val List<int> left;
+  pub val List<int> right;
+  pub val List<float> leaf_values;
+end
+
+fnc count_ints(List<int> values): int {
+  let int n = 0;
+  for const x of values do
+    n = n + 1;
+  done
+  return n;
+}
+
+fnc count_floats(List<float> values): int {
+  let int n = 0;
+  for const x of values do
+    n = n + 1;
+  done
+  return n;
+}
+
+// Full validation precedes ALL forward or backward output writes.
+pub fnc validate_tape(TapeF64 tape): Result<int, String> {
+  val int n = count_ints(tape.opcode);
+  if count_ints(tape.left) != n; do
+    return Err("left edge count mismatch");
+  fi
+  if count_ints(tape.right) != n; do
+    return Err("right edge count mismatch");
+  fi
+  if count_floats(tape.leaf_values) != n; do
+    return Err("leaf value count mismatch");
+  fi
+  for int i = 0; i < n; i++ do
+    val int op = tape.opcode[i];
+    if op == 0; do
+      if tape.left[i] != -1 || tape.right[i] != -1; do
+        return Err("leaf must have sentinel edges");
+      fi
+    else
+      if op != 1 && op != 2; do
+        return Err("unsupported operation");
+      fi
+      if tape.left[i] < 0 || tape.left[i] >= i; do
+        return Err("left operand must precede node");
+      fi
+      if tape.right[i] < 0 || tape.right[i] >= i; do
+        return Err("right operand must precede node");
+      fi
+    fi
+  done
+  return Ok(n);
+}
+
+pub fnc forward_f64_into(
+  TapeF64 tape,
+  List<float> mut output
+): Result<bool, String> {
+  val Result<int, String> checked = validate_tape(tape);
+  if checked.is_err(); do
+    return Err("invalid differentiation tape");
+  fi
+  val int n = checked.unwrap();
+  if count_floats(output) != n; do
+    return Err("forward output length mismatch");
+  fi
+  for int i = 0; i < n; i++ do
+    val int op = tape.opcode[i];
+    if op == 0; do
+      output[i] = tape.leaf_values[i];
+    else
+      val int a = tape.left[i];
+      val int b = tape.right[i];
+      if op == 1; do
+        output[i] = output[a] + output[b];
+      else
+        output[i] = output[a] * output[b];
+      fi
+    fi
+  done
+  return Ok(true);
+}
+
+// Reverse topological accumulation; shared operands accumulate twice.
+// Caller must provide forward values from the SAME immutable tape generation.
+// This API deliberately cannot mutate the saved forward values.
+pub fnc backward_f64_into(
+  TapeF64 tape,
+  List<float> forward_values,
+  int root,
+  float seed,
+  List<float> mut gradients
+): Result<bool, String> {
+  val Result<int, String> checked = validate_tape(tape);
+  if checked.is_err(); do
+    return Err("invalid differentiation tape");
+  fi
+  val int n = checked.unwrap();
+  if root < 0 || root >= n; do
+    return Err("invalid backward root");
+  fi
+  if count_floats(forward_values) != n; do
+    return Err("saved forward value count mismatch");
+  fi
+  if count_floats(gradients) != n; do
+    return Err("gradient output length mismatch");
+  fi
+  for int i = 0; i < n; i++ do
+    gradients[i] = 0.0;
+  done
+  gradients[root] = seed;
+  for int i = n - 1; i >= 0; i-- do
+    val int op = tape.opcode[i];
+    if op == 1; do
+      val int a = tape.left[i];
+      val int b = tape.right[i];
+      gradients[a] = gradients[a] + gradients[i];
+      gradients[b] = gradients[b] + gradients[i];
+    fi
+    if op == 2; do
+      val int a = tape.left[i];
+      val int b = tape.right[i];
+      val float upstream = gradients[i];
+      gradients[a] = gradients[a] + (upstream * forward_values[b]);
+      gradients[b] = gradients[b] + (upstream * forward_values[a]);
+    fi
+  done
+  return Ok(true);
+}

@@ -1,0 +1,45 @@
+import module Assert from "std/assert";
+import class TapeF64 from "../src/tape";
+import fnc validate_tape, forward_f64_into, backward_f64_into from "../src/tape";
+
+fnc f(float x): float {
+  return (x * x) + x;
+}
+
+pub routine main(): void {
+  // x=3, y=x*x, z=y+x => z=12, dz/dx=7.
+  val TapeF64 tape = new TapeF64(
+    arr[0, 2, 1],
+    arr[-1, 0, 1],
+    arr[-1, 0, 0],
+    arr[3.0, 0.0, 0.0]
+  );
+  Assert.true_throws(validate_tape(tape).is_ok());
+  val List<float> values = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(forward_f64_into(tape, values).is_ok());
+  Assert.equal_throws(values[2], 12.0);
+  val List<float> grads = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(backward_f64_into(tape, values, 2, 1.0, grads).is_ok());
+  Assert.equal_throws(grads[0], 7.0);
+  Assert.equal_throws(grads[1], 1.0);
+  Assert.equal_throws(grads[2], 1.0);
+
+  val float eps = 0.00001;
+  val float numerical = (f(3.0 + eps) - f(3.0 - eps)) / (2.0 * eps);
+  val float diff = grads[0] - numerical;
+  Assert.true_throws(diff < 0.001 && diff > -0.001);
+
+  // Reject cycles, invalid edges, malformed payloads before output mutation.
+  val TapeF64 bad = new TapeF64(
+    arr[0, 2], arr[-1, 1], arr[-1, 0], arr[3.0, 0.0]
+  );
+  Assert.true_throws(validate_tape(bad).is_err());
+  val List<float> untouched = arr[91.0, 92.0];
+  Assert.true_throws(forward_f64_into(bad, untouched).is_err());
+  Assert.equal_throws(untouched[0], 91.0);
+  Assert.true_throws(backward_f64_into(tape, values, 9, 1.0, grads).is_err());
+  Assert.equal_throws(grads[0], 7.0);
+
+  stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
+  return;
+}

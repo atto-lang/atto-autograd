@@ -43,6 +43,12 @@ pub routine main(): void {
   Assert.equal_throws(grads[0], 7.0);
 
   Assert.true_throws(backward_f64_into(tape, arr[3.0, 0.0, 0.0], 2, 1.0, grads).is_err());
+  val List<float> tmp = arr[0.0, 0.0, 0.0];
+  val List<float> published = arr[91.0, 92.0, 93.0];
+  Assert.true_throws(forward_checked_into(bad, tmp, published).is_err());
+  Assert.equal_throws(published[0], 91.0);
+  Assert.true_throws(forward_checked_into(tape, tmp, published).is_ok());
+  Assert.equal_throws(published[2], 12.0);
   stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
   return;
 }

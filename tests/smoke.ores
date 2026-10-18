@@ -55,6 +55,26 @@ pub routine main(): void {
   Assert.equal_throws(grad_published[0], 7.0);
   Assert.true_throws(backward_checked_into(tape, published, 90, 1.0, grad_tmp, grad_published).is_err());
   Assert.equal_throws(grad_published[0], 7.0);
+  val TapeF64 active = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, -1], arr[2.0, 0.0]
+  );
+  val List<float> activations_relu = arr[0.0, 0.0];
+  val List<float> gradients_relu = arr[0.0, 0.0];
+  Assert.true_throws(forward_f64_into(active, activations_relu).is_ok());
+  Assert.equal_throws(activations_relu[1], 2.0);
+  Assert.true_throws(backward_f64_into(active, activations_relu, 1, 1.0, gradients_relu).is_ok());
+  Assert.equal_throws(gradients_relu[0], 1.0);
+  val TapeF64 inactive = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, -1], arr[-2.0, 0.0]
+  );
+  Assert.true_throws(forward_f64_into(inactive, activations_relu).is_ok());
+  Assert.equal_throws(activations_relu[1], 0.0);
+  Assert.true_throws(backward_f64_into(inactive, activations_relu, 1, 1.0, gradients_relu).is_ok());
+  Assert.equal_throws(gradients_relu[0], 0.0);
+  val TapeF64 invalid_relu = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, 0], arr[1.0, 0.0]
+  );
+  Assert.true_throws(validate_tape(invalid_relu).is_err());
   stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
   return;
 }

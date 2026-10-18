@@ -9,6 +9,10 @@ define pub class TapeF64 as
   pub val List<float> leaf_values;
 end
 
+fnc finite_f64(float x): bool {
+  return (x - x) == 0.0;
+}
+
 fnc count_ints(List<int> values): int {
   let int n = 0;
   for const x of values do
@@ -42,6 +46,9 @@ pub fnc validate_tape(TapeF64 tape): Result<int, String> {
     if op == 0; do
       if tape.left[i] != -1 || tape.right[i] != -1; do
         return Err("leaf must have sentinel edges");
+      fi
+      if !finite_f64(tape.leaf_values[i]); do
+        return Err("leaf value must be finite");
       fi
     else
       if op != 1 && op != 2; do
@@ -111,6 +118,14 @@ pub fnc backward_f64_into(
   if count_floats(gradients) != n; do
     return Err("gradient output length mismatch");
   fi
+  if !finite_f64(seed); do
+    return Err("nonfinite backward seed");
+  fi
+  for const value of forward_values do
+    if !finite_f64(value); do
+      return Err("nonfinite saved activation");
+    fi
+  done
   for int i = 0; i < n; i++ do
     gradients[i] = 0.0;
   done

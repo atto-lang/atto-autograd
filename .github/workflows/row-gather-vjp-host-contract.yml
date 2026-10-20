@@ -1,0 +1,35 @@
+name: Saved row-gather tensor VJP oracle (host-only)
+on:
+  pull_request:
+    paths:
+      - "src/row_gather_vjp.ores"
+      - "tests/row_gather_vjp_smoke.ores"
+      - "tests/row_gather_vjp_contract.test.mjs"
+      - "docs/CONTRACT.md"
+      - "scripts/test-workspace.sh"
+      - ".github/workflows/row-gather-vjp-host-contract.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test saved-forward consistency and repeated-index VJP
+        run: node --test tests/row_gather_vjp_contract.test.mjs
+      - name: Fail closed without actual compiler and workspace source
+        run: |
+          set -eu
+          sh -n scripts/test-workspace.sh
+          set +e
+          env -u ORESLANG_BIN sh scripts/test-workspace.sh
+          status=$?
+          set -e
+          test "$status" -eq 78
+      - name: State exact evidence limitations
+        run: echo "HOST_ONLY; TensorVJPGuest=NOT_EXECUTED; SavedLeaseProof=NOT_VERIFIED"

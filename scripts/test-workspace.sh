@@ -9,3 +9,8 @@ if [ ! -f "../oreslang-tensor/src/tensor.ores" ]; then
   exit 78
 fi
 "$ORESLANG_BIN" tests/tensor_vjp_smoke.ores
+if [ ! -f "../oreslang-tensor/src/row_batches.ores" ]; then
+  echo "UNCONFIGURED: oreslang-tensor row-batch feature must be a sibling" >&2
+  exit 78
+fi
+"$ORESLANG_BIN" tests/row_gather_vjp_smoke.ores

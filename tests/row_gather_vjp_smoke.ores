@@ -1,0 +1,53 @@
+// Actual guest acceptance target. Requires sibling tensor repo with
+// src/row_batches.ores. No host-only reference implies it compiled.
+import module Assert from "std/assert";
+import class TensorF64 from "../../oreslang-tensor/src/tensor";
+import fnc row_gather_vjp_with_saved_f64_checked_into from "../src/row_gather_vjp";
+
+pub routine main(): void {
+  val TensorF64 original = new TensorF64(
+    arr[3, 2], arr[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+  );
+  val TensorF64 saved = new TensorF64(
+    arr[3, 2], arr[5.0, 6.0, 1.0, 2.0, 5.0, 6.0]
+  );
+  val TensorF64 upstream = new TensorF64(
+    arr[3, 2], arr[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+  );
+  val List<float> fwd = arr[0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  val List<float> scratch = arr[0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  val List<float> gradients = arr[99.0, 99.0, 99.0, 99.0, 99.0, 99.0];
+
+  Assert.true_throws(row_gather_vjp_with_saved_f64_checked_into(
+    original, arr[2, 0, 2], saved, upstream, fwd, scratch, gradients
+  ).is_ok());
+  Assert.equal_throws(gradients[0], 3.0);
+  Assert.equal_throws(gradients[1], 4.0);
+  Assert.equal_throws(gradients[2], 0.0);
+  Assert.equal_throws(gradients[3], 0.0);
+  Assert.equal_throws(gradients[4], 6.0);
+  Assert.equal_throws(gradients[5], 8.0);
+
+  // Wrong saved activation fails before touching gradient_output.
+  val TensorF64 stale = new TensorF64(
+    arr[3, 2], arr[7.0, 6.0, 1.0, 2.0, 5.0, 6.0]
+  );
+  val List<float> sentinel = arr[88.0, 88.0, 88.0, 88.0, 88.0, 88.0];
+  Assert.true_throws(row_gather_vjp_with_saved_f64_checked_into(
+    original, arr[2, 0, 2], stale, upstream, fwd, scratch, sentinel
+  ).is_err());
+  Assert.equal_throws(sentinel[0], 88.0);
+  Assert.equal_throws(sentinel[5], 88.0);
+
+  Assert.true_throws(row_gather_vjp_with_saved_f64_checked_into(
+    original, arr[2, 3, 2], saved, upstream, fwd, scratch, sentinel
+  ).is_err());
+  Assert.equal_throws(sentinel[0], 88.0);
+
+  Assert.true_throws(row_gather_vjp_with_saved_f64_checked_into(
+    original, arr[2, 0, 2], saved, upstream, fwd, scratch, scratch
+  ).is_err());
+  Assert.equal_throws(original.values[0], 1.0);
+  stdio.println("ORES_AUTOGRAD_ROW_GATHER_VJP_PASS");
+  return;
+}

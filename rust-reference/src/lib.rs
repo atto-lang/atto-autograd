@@ -54,10 +54,15 @@ impl SavedForward {
         gradient(&self.saved, weights)
     }
 
-    fn replace(&mut self, values: &[f64]) {
+    fn replace(&mut self, values: &[f64]) -> Result<(), &'static str> {
+        let next_generation = self
+            .generation
+            .checked_add(1)
+            .ok_or("saved-forward generation exhausted")?;
         self.saved.clear();
         self.saved.extend_from_slice(values);
-        self.generation += 1;
+        self.generation = next_generation;
+        Ok(())
     }
 }
 
@@ -108,11 +113,23 @@ mod tests {
             state.backward(initial, &[2.0]).unwrap(),
             gradient(&[1.0], &[2.0]).unwrap()
         );
-        state.replace(&[3.0]);
+        state.replace(&[3.0]).unwrap();
         assert_eq!(
             state.backward(initial, &[2.0]),
             Err("stale saved-forward generation")
         );
+    }
+
+    #[test]
+    fn generation_exhaustion_fails_closed_without_replacing_snapshot() {
+        let mut state = SavedForward::new(&[7.0]);
+        state.generation = u64::MAX;
+        assert_eq!(
+            state.replace(&[9.0]),
+            Err("saved-forward generation exhausted")
+        );
+        assert_eq!(state.saved, vec![7.0]);
+        assert_eq!(state.generation, u64::MAX);
     }
 
     #[test]

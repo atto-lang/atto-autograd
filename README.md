@@ -8,3 +8,7 @@ Pure-Oreslang automatic differentiation, initially scalar reverse-mode primitive
 - No mutation of saved-forward intermediates without ownership/version proof.
 
 See `docs/CONTRACT.md` after bootstrap PR.
+
+## Engineering policy: no Python
+
+Python is prohibited in this repository and throughout the `ores-truffle-oreslang` organization for scripts, tests, CI helpers, generators, analyzers, automation, and host tooling. Existing Python functionality must be migrated to **Rust** without weakening behavior, fixtures, or test coverage. The autograd implementation remains Oreslang; this rule specifically replaces Python tooling/reference code with Rust.

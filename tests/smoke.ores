@@ -77,6 +77,29 @@ pub routine main(): void {
   Assert.true_throws(validate_tape(invalid_relu).is_err());
   val TapeF64 empty_tape = new TapeF64(arr[], arr[], arr[], arr[]);
   Assert.true_throws(validate_tape(empty_tape).is_err());
+  // Forward is finite while a reverse edge overflows: d/d(small)
+  // of (huge * small) with seed 2 exceeds finite f64 range.
+  // The raw API must report Err; the checked API must not publish.
+  val TapeF64 backward_overflow = new TapeF64(
+    arr[0, 0, 2],
+    arr[-1, -1, 0],
+    arr[-1, -1, 1],
+    arr[1.0e308, 1.0e-308, 0.0]
+  );
+  val List<float> finite_forward = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(forward_f64_into(backward_overflow, finite_forward).is_ok());
+  val List<float> raw_overflow_scratch = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(backward_f64_into(
+    backward_overflow, finite_forward, 2, 2.0, raw_overflow_scratch
+  ).is_err());
+  val List<float> overflow_scratch = arr[0.0, 0.0, 0.0];
+  val List<float> overflow_output = arr[87.0, 88.0, 89.0];
+  Assert.true_throws(backward_checked_into(
+    backward_overflow, finite_forward, 2, 2.0, overflow_scratch, overflow_output
+  ).is_err());
+  Assert.equal_throws(overflow_output[0], 87.0);
+  Assert.equal_throws(overflow_output[1], 88.0);
+  Assert.equal_throws(overflow_output[2], 89.0);
   stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
   return;
 }

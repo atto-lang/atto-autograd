@@ -34,7 +34,13 @@ check_repo() {
   [ -z "$status" ] || unconfigured "$label checkout contains modified or untracked files"
   for path do
     [ -f "$root/$path" ] || unconfigured "$label missing tracked input: $path"
+    [ ! -L "$root/$path" ] || unconfigured "$label symlinked input forbidden: $path"
     git -C "$root" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || unconfigured "$label untracked input: $path"
+    # `git status` can be suppressed by assume-unchanged / skip-worktree.
+    # Compare working bytes to the exact commit tree, not only the index.
+    expected_blob=$(git -C "$root" rev-parse "$expected:$path" 2>/dev/null) || unconfigured "$label input absent from pinned commit: $path"
+    actual_blob=$(git -C "$root" hash-object -- "$root/$path" 2>/dev/null) || unconfigured "$label cannot hash input: $path"
+    [ "$actual_blob" = "$expected_blob" ] || unconfigured "$label source blob mismatch: $path"
   done
 }
 check_repo "$tensor_root" "$ORESLANG_TENSOR_EXPECTED_SHA" Tensor \

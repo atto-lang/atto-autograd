@@ -54,6 +54,10 @@ check_repo() {
   done
 }
 check_all() {
+# The guest could replace an executable with a symlink to identical bytes.
+# Hash equality alone does not preserve the reviewed file identity.
+[ -f "$ORESLANG_BIN" ] && [ -x "$ORESLANG_BIN" ] && [ ! -L "$ORESLANG_BIN" ] ||
+  unconfigured 'compiler executable unavailable or symlinked after guest execution'
 check_repo "$tensor_root" "$ORESLANG_TENSOR_EXPECTED_SHA" "$ORESLANG_TENSOR_TREE_SHA" Tensor \
   src/tensor.ores src/broadcast.ores src/gradients.ores \
   src/matmul_vjp.ores src/matmul_both_vjp.ores src/row_batches.ores \

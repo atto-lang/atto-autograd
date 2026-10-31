@@ -182,3 +182,24 @@ test('postflight rejects compiler edits created during synthetic guest execution
   assert.match(r.stderr, /compiler executable hash mismatches pinned digest/);
   assert.doesNotMatch(r.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
 });
+
+
+test('postflight rejects compiler symlink substitution with identical bytes', (t) => {
+  const { root, tensor, verify } = makeWorkspace(t);
+  const runner = join(root, 'reviewed-compiler');
+  writeFileSync(runner, '#!/bin/sh\nexit 0\n');
+  chmodSync(runner, 0o700);
+  const digest = run('sha256sum', [runner]).stdout.split(' ')[0];
+  writeFileSync(join(tensor, 'scripts/test.sh'),
+    '#!/bin/sh\necho SYNTHETIC_FIXTURE_ONLY\nmv "$ORESLANG_BIN" "$ORESLANG_BIN.original"\nln -s "$ORESLANG_BIN.original" "$ORESLANG_BIN"\n');
+  git(tensor, 'add', 'scripts/test.sh');
+  git(tensor, 'commit', '-qm', 'synthetic same-bytes symlink switch');
+  const r = verify({
+    ORESLANG_BIN: runner, ORESLANG_RUNNER_SHA256: digest,
+    ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD'),
+    ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
+  });
+  assert.equal(r.status, 78, r.stderr);
+  assert.match(r.stderr, /compiler executable unavailable or symlinked after guest execution/);
+  assert.doesNotMatch(r.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
+});

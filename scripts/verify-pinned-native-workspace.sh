@@ -50,10 +50,12 @@ check_repo "$tensor_root" "$ORESLANG_TENSOR_EXPECTED_SHA" Tensor \
   tests/matmul_vjp_smoke.ores tests/matmul_two_sided_vjp_smoke.ores \
   scripts/test.sh
 check_repo "$autograd_root" "$ORESLANG_AUTOGRAD_EXPECTED_SHA" Autograd \
-  src/tape.ores src/tensor_vjp.ores src/tensor_training_vjp.ores \
+  src/tape.ores src/forward_checked.ores src/backward_checked.ores \
+  src/tensor_vjp.ores src/tensor_training_vjp.ores \
   src/row_gather_vjp.ores tests/smoke.ores tests/tensor_vjp_smoke.ores \
   tests/row_gather_vjp_smoke.ores examples/tensor_training_vjp_smoke.ores \
-  scripts/test.sh scripts/test-workspace.sh scripts/verify-guest-case.sh
+  scripts/test.sh scripts/test-workspace.sh scripts/verify-guest-case.sh \
+  scripts/verify-pinned-native-workspace.sh
 if command -v sha256sum >/dev/null 2>&1; then
   actual_bin_hash=$(sha256sum "$ORESLANG_BIN") || unconfigured 'cannot hash compiler executable'
   actual_bin_hash=${actual_bin_hash%% *}

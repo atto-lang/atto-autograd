@@ -12,25 +12,50 @@ fn scalar_loss(xs: &[f64], weights: &[f64]) -> Result<f64, &'static str> {
     if xs.len() != weights.len() {
         return Err("shape mismatch");
     }
-    Ok(xs
-        .iter()
-        .zip(weights)
-        .map(|(&x, &w)| {
-            let value = x * w + x * x;
-            value * value
-        })
-        .sum())
+    xs.iter().zip(weights).try_fold(0.0_f64, |total, (&x, &w)| {
+        if !x.is_finite() || !w.is_finite() {
+            return Err("nonfinite input");
+        }
+        let product = x * w;
+        let squared_x = x * x;
+        if !product.is_finite() || !squared_x.is_finite() {
+            return Err("nonfinite forward intermediate");
+        }
+        let value = product + squared_x;
+        let square = value * value;
+        let next = total + square;
+        if !value.is_finite() || !square.is_finite() || !next.is_finite() {
+            return Err("nonfinite loss");
+        }
+        Ok(next)
+    })
 }
 
 fn gradient(xs: &[f64], weights: &[f64]) -> Result<Vec<f64>, &'static str> {
     if xs.len() != weights.len() {
         return Err("shape mismatch");
     }
-    Ok(xs
-        .iter()
+    xs.iter()
         .zip(weights)
-        .map(|(&x, &w)| 2.0 * (x * w + x * x) * (w + 2.0 * x))
-        .collect())
+        .map(|(&x, &w)| {
+            if !x.is_finite() || !w.is_finite() {
+                return Err("nonfinite input");
+            }
+            let product = x * w;
+            let squared_x = x * x;
+            let local = w + 2.0 * x;
+            if !product.is_finite() || !squared_x.is_finite() || !local.is_finite() {
+                return Err("nonfinite gradient intermediate");
+            }
+            let value = product + squared_x;
+            let twice = 2.0 * value;
+            let gradient = twice * local;
+            if !value.is_finite() || !twice.is_finite() || !gradient.is_finite() {
+                return Err("nonfinite gradient");
+            }
+            Ok(gradient)
+        })
+        .collect()
 }
 
 #[derive(Debug)]
@@ -62,8 +87,13 @@ impl SavedForward {
             .generation
             .checked_add(1)
             .ok_or("saved-forward generation exhausted")?;
-        self.saved.clear();
-        self.saved.extend_from_slice(values);
+        if values.iter().any(|v| !v.is_finite()) {
+            return Err("nonfinite saved-forward activation");
+        }
+        // Fully construct the replacement before publishing it. If the
+        // allocation fails or unwinds, the previous snapshot remains intact.
+        let replacement = values.to_vec();
+        self.saved = replacement;
         self.generation = next;
         Ok(next)
     }
@@ -142,6 +172,37 @@ mod tests {
             state.backward(1, &[1.0]),
             Err("stale saved-forward generation")
         );
+    }
+
+    #[test]
+    fn invalid_numeric_inputs_and_overflow_fail_closed() {
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(scalar_loss(&[invalid], &[1.0]), Err("nonfinite input"));
+            assert_eq!(gradient(&[1.0], &[invalid]), Err("nonfinite input"));
+        }
+        assert!(scalar_loss(&[1.0e200], &[1.0]).is_err());
+        assert!(gradient(&[1.0e308], &[1.0e308]).is_err());
+        assert!(scalar_loss(&[1.0e308, 1.0e308], &[0.0, 0.0]).is_err());
+    }
+
+    #[test]
+    fn invalid_replacement_preserves_saved_snapshot_and_lease() {
+        let mut saved = SavedForward::new(&[2.0]);
+        let old_generation = saved.generation;
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                saved.replace(&[invalid]),
+                Err("nonfinite saved-forward activation")
+            );
+            assert_eq!(saved.generation, old_generation);
+            assert_eq!(saved.saved, vec![2.0]);
+        }
+        assert_eq!(
+            saved.backward(old_generation, &[3.0]).unwrap(),
+            gradient(&[2.0], &[3.0]).unwrap()
+        );
+        assert!(saved.backward(old_generation, &[f64::NAN]).is_err());
+        assert_eq!(saved.saved, vec![2.0]);
     }
 
     #[test]

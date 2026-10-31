@@ -31,7 +31,8 @@ function makeWorkspace(t) {
       'scripts/test.sh',
     ],
     [autograd]: [
-      'src/tape.ores', 'src/tensor_vjp.ores', 'src/tensor_training_vjp.ores',
+      'src/tape.ores', 'src/forward_checked.ores', 'src/backward_checked.ores',
+      'src/tensor_vjp.ores', 'src/tensor_training_vjp.ores',
       'src/row_gather_vjp.ores', 'tests/smoke.ores', 'tests/tensor_vjp_smoke.ores',
       'tests/row_gather_vjp_smoke.ores', 'examples/tensor_training_vjp_smoke.ores',
       'scripts/test.sh', 'scripts/test-workspace.sh', 'scripts/verify-guest-case.sh',

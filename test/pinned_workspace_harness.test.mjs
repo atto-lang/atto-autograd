@@ -143,12 +143,12 @@ test('pinned workspace detects skip-worktree hidden source edits', (t) => {
 
 test('aggregate timeout accommodates each independently bounded guest fixture', () => {
   const script = readFileSync(hostScript, 'utf8');
-  assert.match(script, /tensor_suite_timeout=\\$\\(\\(per_guest_timeout \\* 4 \\+ 30\\)\\)/);
-  assert.match(script, /autograd_scalar_timeout=\\$\\(\\(per_guest_timeout \\+ 30\\)\\)/);
-  assert.match(script, /autograd_workspace_timeout=\\$\\(\\(per_guest_timeout \\* 3 \\+ 30\\)\\)/);
-  assert.match(script, /timeout -k 2s "\\$\\{tensor_suite_timeout\\}s"/);
-  assert.match(script, /timeout -k 2s "\\$\\{autograd_scalar_timeout\\}s"/);
-  assert.match(script, /timeout -k 2s "\\$\\{autograd_workspace_timeout\\}s"/);
+  assert.match(script, /tensor_suite_timeout=\$\(\(per_guest_timeout \* 4 \+ 30\)\)/);
+  assert.match(script, /autograd_scalar_timeout=\$\(\(per_guest_timeout \+ 30\)\)/);
+  assert.match(script, /autograd_workspace_timeout=\$\(\(per_guest_timeout \* 3 \+ 30\)\)/);
+  assert.match(script, /timeout -k 2s "\$\{tensor_suite_timeout\}s"/);
+  assert.match(script, /timeout -k 2s "\$\{autograd_scalar_timeout\}s"/);
+  assert.match(script, /timeout -k 2s "\$\{autograd_workspace_timeout\}s"/);
   for (const seconds of [1, 5, 10, 30, 60, 120]) {
     assert.ok(seconds * 4 + 30 > seconds * 4);
     assert.ok(seconds + 30 > seconds);

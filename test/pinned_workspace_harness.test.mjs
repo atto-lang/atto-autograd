@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,8 @@ function makeWorkspace(t) {
       'scripts/test.sh',
     ],
     [autograd]: [
-      'src/tape.ores', 'src/tensor_vjp.ores', 'src/tensor_training_vjp.ores',
+      'src/tape.ores', 'src/forward_checked.ores', 'src/backward_checked.ores',
+      'src/tensor_vjp.ores', 'src/tensor_training_vjp.ores',
       'src/row_gather_vjp.ores', 'tests/smoke.ores', 'tests/tensor_vjp_smoke.ores',
       'tests/row_gather_vjp_smoke.ores', 'examples/tensor_training_vjp_smoke.ores',
       'scripts/test.sh', 'scripts/test-workspace.sh', 'scripts/verify-guest-case.sh',
@@ -67,9 +68,6 @@ function makeWorkspace(t) {
     ORESLANG_AUTOGRAD_EXPECTED_SHA: git(autograd, 'rev-parse', 'HEAD'),
     ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
     ORESLANG_AUTOGRAD_TREE_SHA: git(autograd, 'rev-parse', 'HEAD^{tree}'),
-    ORESLANG_TENSOR_SOURCE_BLOB: git(tensor, 'hash-object', 'src/tensor.ores'),
-    ORESLANG_TRAINING_VJP_BLOB: git(autograd, 'hash-object', 'src/tensor_training_vjp.ores'),
-    ORESLANG_TRAINING_SMOKE_BLOB: git(autograd, 'hash-object', 'examples/tensor_training_vjp_smoke.ores'),
     ORESLANG_COMPILER_SOURCE_SHA: 'a'.repeat(40),
   };
   const script = join(autograd, 'scripts/verify-pinned-native-workspace.sh');
@@ -92,9 +90,6 @@ test('pinned workspace fails closed before any guest on invalid configuration', 
     { ORESLANG_RUNNER_SHA256: 'f'.repeat(64) },
     { ORESLANG_TENSOR_TREE_SHA: 'f'.repeat(40) },
     { ORESLANG_AUTOGRAD_TREE_SHA: 'f'.repeat(40) },
-    { ORESLANG_TENSOR_SOURCE_BLOB: 'f'.repeat(40) },
-    { ORESLANG_TRAINING_VJP_BLOB: 'f'.repeat(40) },
-    { ORESLANG_TRAINING_SMOKE_BLOB: 'f'.repeat(40) },
     { ORESLANG_COMPILER_SOURCE_SHA: '0'.repeat(40) },
     { ORESLANG_GUEST_TIMEOUT_SEC: '999' },
   ]) {
@@ -118,38 +113,72 @@ test('pinned workspace rejects modified or untracked source checkouts', (t) => {
   assert.match(result.stderr, /Autograd checkout contains modified or untracked/);
 });
 
-test('post-execution source mutation invalidates prior guest success', (t) => {
-  const { tensor, autograd, verify } = makeWorkspace(t);
-  writeFileSync(join(tensor, 'scripts/test.sh'),
-    '#!/bin/sh\necho SYNTHETIC_FIXTURE_ONLY\nprintf "\nchanged\n" >> ../oreslang-autograd/src/tape.ores\n');
-  git(tensor, 'add', 'scripts/test.sh');
-  git(tensor, 'commit', '-qm', 'synthetic post-execution mutation fixture');
-  const result = verify({
-    ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD'),
-    ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
-  });
+// Git may omit modified files from status when marked assume-unchanged.
+test('pinned workspace detects hidden modified bytes despite Git index hints', (t) => {
+  const { tensor, verify } = makeWorkspace(t);
+  git(tensor, 'update-index', '--assume-unchanged', 'src/tensor.ores');
+  appendFileSync(join(tensor, 'src/tensor.ores'), '// hidden edit\n');
+  // The status heuristic alone is insufficient.
+  assert.equal(git(tensor, 'status', '--porcelain'), '');
+  const result = verify();
   assert.equal(result.status, 78, result.stderr);
-  assert.match(result.stderr, /Autograd checkout contains modified or untracked files/);
-  assert.doesNotMatch(result.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
+  assert.match(result.stderr, /Tensor source blob mismatch: src\/tensor\.ores/);
 });
 
-test('post-execution compiler mutation invalidates prior guest success', (t) => {
-  const { tensor, root, verify } = makeWorkspace(t);
-  const runner = join(root, 'synthetic-compiler');
-  writeFileSync(runner, '#!/bin/sh\nexit 0\n');
-  chmodSync(runner, 0o700);
-  const hash = run('sha256sum', [runner]).stdout.split(' ')[0];
-  writeFileSync(join(tensor, 'scripts/test.sh'),
-    '#!/bin/sh\necho SYNTHETIC_FIXTURE_ONLY\nprintf mutated >> "$ORESLANG_BIN"\n');
-  git(tensor, 'add', 'scripts/test.sh');
-  git(tensor, 'commit', '-qm', 'synthetic compiler mutation fixture');
+test('pinned workspace rejects an exact-head tracked symlink input', (t) => {
+  const { tensor, verify, env } = makeWorkspace(t);
+  const target = join(tensor, 'src/tensor.ores');
+  unlinkSync(target);
+  symlinkSync('broadcast.ores', target);
+  git(tensor, 'add', 'src/tensor.ores');
+  git(tensor, 'commit', '-qm', 'symbolic link admission trap');
   const result = verify({
-    ORESLANG_BIN: runner,
-    ORESLANG_RUNNER_SHA256: hash,
     ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD'),
     ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
   });
   assert.equal(result.status, 78, result.stderr);
-  assert.match(result.stderr, /compiler executable hash mismatches pinned digest/);
-  assert.doesNotMatch(result.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
+  assert.match(result.stderr, /Tensor symlinked input forbidden: src\/tensor\.ores/);
+});
+
+test('pinned workspace detects skip-worktree hidden source edits', (t) => {
+  const { tensor, verify } = makeWorkspace(t);
+  git(tensor, 'update-index', '--skip-worktree', 'src/tensor.ores');
+  appendFileSync(join(tensor, 'src/tensor.ores'), '// skip-worktree hidden edit\n');
+  const result = verify();
+  assert.equal(result.status, 78, result.stderr);
+  assert.match(result.stderr, /Tensor source blob mismatch: src\/tensor\.ores/);
+});
+
+test('postflight rejects source edits created during synthetic guest execution', (t) => {
+  const { tensor, verify } = makeWorkspace(t);
+  writeFileSync(join(tensor, 'scripts/test.sh'),
+    '#!/bin/sh\necho SYNTHETIC_FIXTURE_ONLY\nprintf changed >> ../oreslang-autograd/src/tape.ores\n');
+  git(tensor, 'add', 'scripts/test.sh');
+  git(tensor, 'commit', '-qm', 'synthetic source mutation');
+  const r = verify({
+    ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD'),
+    ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
+  });
+  assert.equal(r.status, 78, r.stderr);
+  assert.match(r.stderr, /Autograd checkout contains modified or untracked files/);
+  assert.doesNotMatch(r.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
+});
+test('postflight rejects compiler edits created during synthetic guest execution', (t) => {
+  const { root, tensor, verify } = makeWorkspace(t);
+  const runner = join(root, 'fake-compiler');
+  writeFileSync(runner, '#!/bin/sh\nexit 0\n');
+  chmodSync(runner, 0o700);
+  const digest = run('sha256sum', [runner]).stdout.split(' ')[0];
+  writeFileSync(join(tensor, 'scripts/test.sh'),
+    '#!/bin/sh\necho SYNTHETIC_FIXTURE_ONLY\nprintf changed >> "$ORESLANG_BIN"\n');
+  git(tensor, 'add', 'scripts/test.sh');
+  git(tensor, 'commit', '-qm', 'synthetic compiler mutation');
+  const r = verify({
+    ORESLANG_BIN: runner, ORESLANG_RUNNER_SHA256: digest,
+    ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD'),
+    ORESLANG_TENSOR_TREE_SHA: git(tensor, 'rev-parse', 'HEAD^{tree}'),
+  });
+  assert.equal(r.status, 78, r.stderr);
+  assert.match(r.stderr, /compiler executable hash mismatches pinned digest/);
+  assert.doesNotMatch(r.stdout, /PINNED_WORKSPACE_HOST_CHECKS_PASSED/);
 });

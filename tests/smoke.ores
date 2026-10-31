@@ -77,6 +77,25 @@ pub routine main(): void {
   Assert.true_throws(validate_tape(invalid_relu).is_err());
   val TapeF64 empty_tape = new TapeF64(arr[], arr[], arr[], arr[]);
   Assert.true_throws(validate_tape(empty_tape).is_err());
+  // A finite tape with an overflowing multiplication must not publish
+  // partial forward activations from the checked API. The raw API may
+  // mutate its scratch output before reporting the arithmetic error.
+  val TapeF64 forward_overflow = new TapeF64(
+    arr[0,0,2],arr[-1,-1,0],arr[-1,-1,1],arr[1.0e308,2.0,0.0]
+  );
+  val List<float> raw_forward_scratch = arr[0.0,0.0,0.0];
+  Assert.true_throws(forward_f64_into(
+    forward_overflow,raw_forward_scratch
+  ).is_err());
+  val List<float> safe_forward_scratch = arr[0.0,0.0,0.0];
+  val List<float> forward_published = arr[77.0,78.0,79.0];
+  Assert.true_throws(forward_checked_into(
+    forward_overflow,safe_forward_scratch,forward_published
+  ).is_err());
+  Assert.equal_throws(forward_published[0],77.0);
+  Assert.equal_throws(forward_published[1],78.0);
+  Assert.equal_throws(forward_published[2],79.0);
+
   // Forward is finite while a reverse edge overflows: d/d(small)
   // of (huge * small) with seed 2 exceeds finite f64 range.
   // The raw API must report Err; the checked API must not publish.

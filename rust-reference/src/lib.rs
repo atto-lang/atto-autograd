@@ -54,10 +54,18 @@ impl SavedForward {
         gradient(&self.saved, weights)
     }
 
-    fn replace(&mut self, values: &[f64]) {
+    fn replace(&mut self, values: &[f64]) -> Result<u64, &'static str> {
+        // Never wrap an incarnation lease: generation reuse could authorize a
+        // stale backward request against a newer saved activation.
+        // Preflight before touching the existing snapshot.
+        let next = self
+            .generation
+            .checked_add(1)
+            .ok_or("saved-forward generation exhausted")?;
         self.saved.clear();
         self.saved.extend_from_slice(values);
-        self.generation += 1;
+        self.generation = next;
+        Ok(next)
     }
 }
 
@@ -108,9 +116,30 @@ mod tests {
             state.backward(initial, &[2.0]).unwrap(),
             gradient(&[1.0], &[2.0]).unwrap()
         );
-        state.replace(&[3.0]);
+        assert_eq!(state.replace(&[3.0]), Ok(initial + 1));
         assert_eq!(
             state.backward(initial, &[2.0]),
+            Err("stale saved-forward generation")
+        );
+    }
+
+    #[test]
+    fn exhausted_generation_refuses_reuse_without_modifying_state() {
+        let mut state = SavedForward::new(&[4.0]);
+        state.generation = u64::MAX;
+        let previous = state.saved.clone();
+        assert_eq!(
+            state.replace(&[999.0]),
+            Err("saved-forward generation exhausted")
+        );
+        assert_eq!(state.saved, previous);
+        assert_eq!(state.generation, u64::MAX);
+        assert_eq!(
+            state.backward(u64::MAX, &[1.0]).unwrap(),
+            gradient(&[4.0], &[1.0]).unwrap()
+        );
+        assert_eq!(
+            state.backward(1, &[1.0]),
             Err("stale saved-forward generation")
         );
     }

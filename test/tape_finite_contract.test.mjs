@@ -25,8 +25,8 @@ test('duplicated add edge must reject the second overflowing contribution', () =
   assert.equal(Number.isFinite(seed), true);
   assert.equal(Number.isFinite(seed + seed), false);
   assert.match(smoke, /duplicate_add_overflow/);
-  assert.match(smoke, /duplicate_published\\[0\\], 63\\.0/);
-  assert.match(smoke, /duplicate_published\\[1\\], 64\\.0/);
+  assert.ok(smoke.includes('duplicate_published[0], 63.0'));
+  assert.ok(smoke.includes('duplicate_published[1], 64.0'));
 });
 
 test('every reverse accumulator checks finiteness before storing', () => {

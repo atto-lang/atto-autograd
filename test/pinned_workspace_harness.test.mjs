@@ -131,3 +131,12 @@ test('pinned workspace rejects an exact-head tracked symlink input', (t) => {
   assert.equal(result.status, 78, result.stderr);
   assert.match(result.stderr, /Tensor symlinked input forbidden: src\/tensor\.ores/);
 });
+
+test('pinned workspace detects skip-worktree hidden source edits', (t) => {
+  const { tensor, verify } = makeWorkspace(t);
+  git(tensor, 'update-index', '--skip-worktree', 'src/tensor.ores');
+  appendFileSync(join(tensor, 'src/tensor.ores'), '// skip-worktree hidden edit\n');
+  const result = verify();
+  assert.equal(result.status, 78, result.stderr);
+  assert.match(result.stderr, /Tensor source blob mismatch: src\/tensor\.ores/);
+});

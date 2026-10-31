@@ -65,3 +65,24 @@ esac
 `);
   assert.equal(execute(cwd, 'scripts/test-workspace.sh', runner).status, 0);
 });
+
+test('hanging synthetic guest is terminated by the bounded watchdog', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ores-autograd-timeout-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const hanging = fakeRunner(dir, '#!/bin/sh\\nsleep 15\\n');
+  const runCase = (limit) => spawnSync('sh', [
+    'scripts/verify-guest-case.sh', 'tests/smoke.ores', 'ORES_ML_AUTOGRAD_SMOKE_PASS',
+  ], {
+    cwd: root,
+    env: { ...process.env, ORESLANG_BIN: hanging, ORESLANG_GUEST_TIMEOUT_SEC: limit },
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const expired = runCase('1');
+  assert.notEqual(expired.status, 0);
+  assert.match(expired.stderr, /GUEST_FAILED/);
+  assert.equal(expired.error, undefined, 'watchdog must end before host test timeout');
+  const invalid = runCase('999');
+  assert.equal(invalid.status, 78);
+  assert.match(invalid.stderr, /invalid bounded guest timeout/);
+});

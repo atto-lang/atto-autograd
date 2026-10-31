@@ -7,9 +7,19 @@ if [ "$#" -ne 2 ] || [ -z "${ORESLANG_BIN:-}" ] || [ ! -x "$ORESLANG_BIN" ]; the
 fi
 fixture="$1"
 marker="$2"
+# Bound every guest run, including a compiler/guest process that never exits.
+# Only a reviewed finite timeout can be selected by source-local tests.
+case "${ORESLANG_GUEST_TIMEOUT_SEC:-120}" in
+  1|5|10|30|60|120) timeout_sec="${ORESLANG_GUEST_TIMEOUT_SEC:-120}" ;;
+  *) echo "UNCONFIGURED: invalid bounded guest timeout" >&2; exit 78 ;;
+esac
+if ! command -v timeout >/dev/null 2>&1; then
+  echo "UNCONFIGURED: GNU timeout watchdog is required" >&2
+  exit 78
+fi
 tmpdir="$(mktemp -d)" || exit 78
 trap 'rm -rf "$tmpdir"' EXIT
-if ! "$ORESLANG_BIN" "$fixture" >"$tmpdir/stdout" 2>"$tmpdir/stderr"; then
+if ! timeout -k 2s "${timeout_sec}s" "$ORESLANG_BIN" "$fixture" >"$tmpdir/stdout" 2>"$tmpdir/stderr"; then
   echo "GUEST_FAILED: $fixture" >&2
   cat "$tmpdir/stderr" >&2
   exit 1

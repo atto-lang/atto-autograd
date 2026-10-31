@@ -72,6 +72,13 @@ esac
 printf 'PINNED_WORKSPACE_START backend=%s tensor=%s autograd=%s declared_compiler_source=%s runner_sha256=%s\n' \
   "$ORESLANG_BACKEND" "$ORESLANG_TENSOR_EXPECTED_SHA" "$ORESLANG_AUTOGRAD_EXPECTED_SHA" \
   "$ORESLANG_COMPILER_SOURCE_SHA" "$actual_bin_hash"
-(cd "$tensor_root" && timeout -k 2s 120s sh scripts/test.sh) || { echo 'TENSOR_GUEST_SUITE_FAILED' >&2; exit 1; }
-(cd "$autograd_root" && timeout -k 2s 120s sh scripts/test.sh && timeout -k 2s 120s sh scripts/test-workspace.sh) || { echo 'AUTOGRAD_GUEST_SUITE_FAILED' >&2; exit 1; }
+# The individual guest harnesses each enforce ORESLANG_GUEST_TIMEOUT_SEC.
+# Give every fixture its own allowance; an unrelated total-suite 120s cap
+# would reject four valid, independently-bounded Tensor executions.
+per_guest_timeout="${ORESLANG_GUEST_TIMEOUT_SEC:-120}"
+tensor_suite_timeout=$((per_guest_timeout * 4 + 30))
+autograd_scalar_timeout=$((per_guest_timeout + 30))
+autograd_workspace_timeout=$((per_guest_timeout * 3 + 30))
+(cd "$tensor_root" && timeout -k 2s "${tensor_suite_timeout}s" sh scripts/test.sh) || { echo 'TENSOR_GUEST_SUITE_FAILED' >&2; exit 1; }
+(cd "$autograd_root" && timeout -k 2s "${autograd_scalar_timeout}s" sh scripts/test.sh && timeout -k 2s "${autograd_workspace_timeout}s" sh scripts/test-workspace.sh) || { echo 'AUTOGRAD_GUEST_SUITE_FAILED' >&2; exit 1; }
 echo 'PINNED_WORKSPACE_HOST_CHECKS_PASSED (requires independent compiler provenance review)'

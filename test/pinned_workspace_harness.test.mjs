@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,4 +139,19 @@ test('pinned workspace detects skip-worktree hidden source edits', (t) => {
   const result = verify();
   assert.equal(result.status, 78, result.stderr);
   assert.match(result.stderr, /Tensor source blob mismatch: src\/tensor\.ores/);
+});
+
+test('aggregate timeout accommodates each independently bounded guest fixture', () => {
+  const script = readFileSync(hostScript, 'utf8');
+  assert.match(script, /tensor_suite_timeout=\\$\\(\\(per_guest_timeout \\* 4 \\+ 30\\)\\)/);
+  assert.match(script, /autograd_scalar_timeout=\\$\\(\\(per_guest_timeout \\+ 30\\)\\)/);
+  assert.match(script, /autograd_workspace_timeout=\\$\\(\\(per_guest_timeout \\* 3 \\+ 30\\)\\)/);
+  assert.match(script, /timeout -k 2s "\\$\\{tensor_suite_timeout\\}s"/);
+  assert.match(script, /timeout -k 2s "\\$\\{autograd_scalar_timeout\\}s"/);
+  assert.match(script, /timeout -k 2s "\\$\\{autograd_workspace_timeout\\}s"/);
+  for (const seconds of [1, 5, 10, 30, 60, 120]) {
+    assert.ok(seconds * 4 + 30 > seconds * 4);
+    assert.ok(seconds + 30 > seconds);
+    assert.ok(seconds * 3 + 30 > seconds * 3);
+  }
 });

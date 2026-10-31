@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,4 +105,28 @@ test('pinned workspace rejects modified or untracked source checkouts', (t) => {
   result = verify();
   assert.equal(result.status, 78);
   assert.match(result.stderr, /Autograd checkout contains modified or untracked/);
+});
+
+// Git may omit modified files from status when marked assume-unchanged.
+test('pinned workspace detects hidden modified bytes despite Git index hints', (t) => {
+  const { tensor, verify } = makeWorkspace(t);
+  git(tensor, 'update-index', '--assume-unchanged', 'src/tensor.ores');
+  appendFileSync(join(tensor, 'src/tensor.ores'), '// hidden edit\n');
+  // The status heuristic alone is insufficient.
+  assert.equal(git(tensor, 'status', '--porcelain'), '');
+  const result = verify();
+  assert.equal(result.status, 78, result.stderr);
+  assert.match(result.stderr, /Tensor source blob mismatch: src\/tensor\.ores/);
+});
+
+test('pinned workspace rejects an exact-head tracked symlink input', (t) => {
+  const { tensor, verify, env } = makeWorkspace(t);
+  const target = join(tensor, 'src/tensor.ores');
+  unlinkSync(target);
+  symlinkSync('broadcast.ores', target);
+  git(tensor, 'add', 'src/tensor.ores');
+  git(tensor, 'commit', '-qm', 'symbolic link admission trap');
+  const result = verify({ ORESLANG_TENSOR_EXPECTED_SHA: git(tensor, 'rev-parse', 'HEAD') });
+  assert.equal(result.status, 78, result.stderr);
+  assert.match(result.stderr, /Tensor symlinked input forbidden: src\/tensor\.ores/);
 });

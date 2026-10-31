@@ -55,3 +55,21 @@ test('every reverse accumulator checks finiteness before storing', () => {
       `${branch} must reject nonfinite ${variable} before writing ${target}`);
   }
 });
+
+test('checked forward atomicity on overflow is a separate guest acceptance case', () => {
+  // Host-only arithmetic oracle plus native fixture/source presence checks.
+  assert.equal(Number.isFinite(1.0e308), true);
+  assert.equal(Number.isFinite(2.0), true);
+  assert.equal(Number.isFinite(1.0e308 * 2.0), false);
+  assert.match(smoke, /val TapeF64 forward_overflow = new TapeF64/);
+  assert.match(smoke, /forward_f64_into\(\s*forward_overflow,raw_forward_scratch/);
+  assert.match(smoke, /forward_checked_into\(\s*forward_overflow,safe_forward_scratch,forward_published/);
+  for (const [index, sentinel] of [[0, 77], [1, 78], [2, 79]]) {
+    assert.ok(smoke.includes(`forward_published[${index}],${sentinel}.0`));
+  }
+  const checked = readFileSync(new URL('../src/forward_checked.ores', import.meta.url), 'utf8');
+  const call = checked.indexOf('if forward_f64_into(tape, scratch).is_err(); do');
+  const publish = checked.indexOf('output[i] = scratch[i];');
+  assert.ok(call >= 0 && publish > call, 'failure return must precede publication');
+  assert.match(checked.slice(call,publish), /return Err\("forward failed"\);/);
+});

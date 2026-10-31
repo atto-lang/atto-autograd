@@ -65,11 +65,16 @@ struct SavedForward {
 }
 
 impl SavedForward {
-    fn new(values: &[f64]) -> Self {
-        Self {
+    fn new(values: &[f64]) -> Result<Self, &'static str> {
+        // Construction and replacement share the same admission policy:
+        // a nonfinite activation must never enter a saved-forward snapshot.
+        if values.iter().any(|value| !value.is_finite()) {
+            return Err("nonfinite saved-forward activation");
+        }
+        Ok(Self {
             saved: values.to_vec(),
             generation: 1,
-        }
+        })
     }
 
     fn backward(&self, generation: u64, weights: &[f64]) -> Result<Vec<f64>, &'static str> {
@@ -140,7 +145,7 @@ mod tests {
     fn shape_rejection_and_generation_fence() {
         assert_eq!(gradient(&[1.0], &[]), Err("shape mismatch"));
 
-        let mut state = SavedForward::new(&[1.0]);
+        let mut state = SavedForward::new(&[1.0]).unwrap();
         let initial = state.generation;
         assert_eq!(
             state.backward(initial, &[2.0]).unwrap(),
@@ -155,7 +160,7 @@ mod tests {
 
     #[test]
     fn exhausted_generation_refuses_reuse_without_modifying_state() {
-        let mut state = SavedForward::new(&[4.0]);
+        let mut state = SavedForward::new(&[4.0]).unwrap();
         state.generation = u64::MAX;
         let previous = state.saved.clone();
         assert_eq!(
@@ -187,7 +192,7 @@ mod tests {
 
     #[test]
     fn invalid_replacement_preserves_saved_snapshot_and_lease() {
-        let mut saved = SavedForward::new(&[2.0]);
+        let mut saved = SavedForward::new(&[2.0]).unwrap();
         let old_generation = saved.generation;
         for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
@@ -206,9 +211,21 @@ mod tests {
     }
 
     #[test]
+    fn initial_snapshot_rejects_nonfinite_activations() {
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                SavedForward::new(&[2.0, invalid]).unwrap_err(),
+                "nonfinite saved-forward activation"
+            );
+        }
+        assert_eq!(SavedForward::new(&[]).unwrap().generation, 1);
+        assert_eq!(SavedForward::new(&[2.0, -3.0]).unwrap().saved, vec![2.0, -3.0]);
+    }
+
+    #[test]
     fn snapshot_cannot_be_changed_by_caller_mutation() {
         let mut x = vec![4.0];
-        let saved = SavedForward::new(&x);
+        let saved = SavedForward::new(&x).unwrap();
         x[0] = 999.0;
         assert_eq!(
             saved.backward(1, &[1.0]).unwrap(),

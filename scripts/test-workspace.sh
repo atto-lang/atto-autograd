@@ -14,3 +14,4 @@ if [ ! -f "../oreslang-tensor/src/row_batches.ores" ]; then
   exit 78
 fi
 sh scripts/verify-guest-case.sh tests/row_gather_vjp_smoke.ores ORES_AUTOGRAD_ROW_GATHER_VJP_PASS
+sh scripts/verify-guest-case.sh examples/tensor_training_vjp_smoke.ores ORES_AUTOGRAD_TENSOR_TRAINING_VJP_PASS

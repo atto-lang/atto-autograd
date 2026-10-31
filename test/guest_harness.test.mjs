@@ -59,6 +59,7 @@ test('tensor workspace smoke rejects silent success but accepts distinct synthet
 case "$1" in
   tests/tensor_vjp_smoke.ores) echo ORES_ML_TENSOR_VJP_SMOKE_PASS;;
   tests/row_gather_vjp_smoke.ores) echo ORES_AUTOGRAD_ROW_GATHER_VJP_PASS;;
+  examples/tensor_training_vjp_smoke.ores) echo ORES_AUTOGRAD_TENSOR_TRAINING_VJP_PASS;;
   *) exit 23;;
 esac
 `);

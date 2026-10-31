@@ -1,0 +1,30 @@
+import class TapeF64 from './tape';
+import fnc forward_f64_into from './tape';
+
+pub fnc forward_checked_into(
+  TapeF64 tape,
+  List<float> mut scratch,
+  List<float> mut output
+): Result<bool, String> {
+  if scratch is output || scratch is tape.leaf_values || output is tape.leaf_values; do
+    return Err("aliased forward buffers");
+  fi
+  let int n = 0;
+  for const value of output do
+    n = n + 1;
+  done
+  let int count = 0;
+  for const value of scratch do
+    count = count + 1;
+  done
+  if n != count; do
+    return Err("scratch length mismatch");
+  fi
+  if forward_f64_into(tape, scratch).is_err(); do
+    return Err("forward failed");
+  fi
+  for int i = 0; i < n; i++ do
+    output[i] = scratch[i];
+  done
+  return Ok(true);
+}

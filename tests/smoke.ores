@@ -100,6 +100,31 @@ pub routine main(): void {
   Assert.equal_throws(overflow_output[0], 87.0);
   Assert.equal_throws(overflow_output[1], 88.0);
   Assert.equal_throws(overflow_output[2], 89.0);
+  // A shared operand has two incoming edges. The first 1e308
+  // contribution is finite; the second overflows. Do not publish.
+  val TapeF64 duplicate_add_overflow = new TapeF64(
+    arr[0, 1],
+    arr[-1, 0],
+    arr[-1, 0],
+    arr[1.0, 0.0]
+  );
+  val List<float> duplicate_forward = arr[0.0, 0.0];
+  Assert.true_throws(forward_f64_into(
+    duplicate_add_overflow, duplicate_forward
+  ).is_ok());
+  Assert.equal_throws(duplicate_forward[1], 2.0);
+  val List<float> duplicate_raw_grad = arr[0.0, 0.0];
+  Assert.true_throws(backward_f64_into(
+    duplicate_add_overflow, duplicate_forward, 1, 1.0e308, duplicate_raw_grad
+  ).is_err());
+  val List<float> duplicate_scratch = arr[0.0, 0.0];
+  val List<float> duplicate_published = arr[63.0, 64.0];
+  Assert.true_throws(backward_checked_into(
+    duplicate_add_overflow, duplicate_forward, 1, 1.0e308,
+    duplicate_scratch, duplicate_published
+  ).is_err());
+  Assert.equal_throws(duplicate_published[0], 63.0);
+  Assert.equal_throws(duplicate_published[1], 64.0);
   stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
   return;
 }

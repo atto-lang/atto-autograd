@@ -19,6 +19,16 @@ test('finite-forward overflow-backward fixture is a discriminating IEEE-754 case
   assert.match(smoke, /overflow_output\[2\], 89\.0/);
 });
 
+test('duplicated add edge must reject the second overflowing contribution', () => {
+  const seed = 1.0e308;
+  assert.equal(Number.isFinite(1.0 + 1.0), true);
+  assert.equal(Number.isFinite(seed), true);
+  assert.equal(Number.isFinite(seed + seed), false);
+  assert.match(smoke, /duplicate_add_overflow/);
+  assert.match(smoke, /duplicate_published\\[0\\], 63\\.0/);
+  assert.match(smoke, /duplicate_published\\[1\\], 64\\.0/);
+});
+
 test('every reverse accumulator checks finiteness before storing', () => {
   const start = tape.indexOf('  for int i = n - 1; i >= 0; i--');
   assert.ok(start >= 0, 'reverse tape traversal missing');

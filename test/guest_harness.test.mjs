@@ -69,7 +69,7 @@ esac
 test('hanging synthetic guest is terminated by the bounded watchdog', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'ores-autograd-timeout-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const hanging = fakeRunner(dir, '#!/bin/sh\\nsleep 15\\n');
+  const hanging = fakeRunner(dir, '#!/bin/sh\nsleep 15\n');
   const runCase = (limit) => spawnSync('sh', [
     'scripts/verify-guest-case.sh', 'tests/smoke.ores', 'ORES_ML_AUTOGRAD_SMOKE_PASS',
   ], {

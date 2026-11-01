@@ -273,4 +273,119 @@ mod tests {
             gradient(&[4.0], &[1.0]).unwrap()
         );
     }
+
+    #[test]
+    fn deterministic_analytic_gradient_matches_1024_central_differences() {
+        let mut seed: u64 = 0x1234_5678_9abc_def0;
+        for case_index in 0..1024 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let x = ((seed >> 16) as u32 as f64 / u32::MAX as f64) * 4.0 - 2.0;
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let w = ((seed >> 16) as u32 as f64 / u32::MAX as f64) * 4.0 - 2.0;
+            let analytic = gradient(&[x], &[w]).unwrap()[0];
+            let numeric = finite_difference(
+                vec![x], 0, |data| scalar_loss(data, &[w]).unwrap(), 1e-6,
+            );
+            assert!(
+                (analytic - numeric).abs() <= 1e-6,
+                "case {case_index} x={x} w={w} analytic={analytic} numeric={numeric}"
+            );
+        }
+    }
+
+    #[test]
+    fn repeated_replacements_invalidate_every_prior_lease() {
+        let mut state = SavedForward::new(&[0.0]).unwrap();
+        let mut prior = state.lease();
+        for index in 1..=256_u64 {
+            let next = state.replace(&[index as f64]).unwrap();
+            assert_eq!(next.instance_id, prior.instance_id);
+            assert_eq!(next.generation, index + 1);
+            assert_eq!(
+                state.backward(prior, &[1.0]),
+                Err("stale saved-forward generation")
+            );
+            assert_eq!(
+                state.backward(next, &[1.0]).unwrap(),
+                gradient(&[index as f64], &[1.0]).unwrap()
+            );
+            prior = next;
+        }
+    }
+
+    #[test]
+    fn future_lease_and_foreign_instance_cannot_authorize_backward() {
+        let first = SavedForward::new(&[2.0]).unwrap();
+        let second = SavedForward::new(&[3.0]).unwrap();
+        let good = first.lease();
+        let wrong_generation = SavedForwardLease {
+            instance_id: good.instance_id,
+            generation: good.generation + 1,
+        };
+        let wrong_instance = SavedForwardLease {
+            instance_id: second.lease().instance_id,
+            generation: good.generation,
+        };
+        assert_eq!(
+            first.backward(wrong_generation, &[1.0]),
+            Err("stale saved-forward generation")
+        );
+        assert_eq!(
+            first.backward(wrong_instance, &[1.0]),
+            Err("stale saved-forward generation")
+        );
+        assert_eq!(
+            first.backward(good, &[1.0]).unwrap(),
+            gradient(&[2.0], &[1.0]).unwrap()
+        );
+    }
+
+    #[test]
+    fn penultimate_generation_advances_once_then_exhausts() {
+        let mut state = SavedForward::new(&[2.0]).unwrap();
+        state.generation = u64::MAX - 1;
+        let old = state.lease();
+        let max_lease = state.replace(&[3.0]).unwrap();
+        assert_eq!(max_lease.generation, u64::MAX);
+        assert_eq!(
+            state.backward(old, &[1.0]),
+            Err("stale saved-forward generation")
+        );
+        assert_eq!(
+            state.replace(&[4.0]),
+            Err("saved-forward generation exhausted")
+        );
+        assert_eq!(state.lease(), max_lease);
+        assert_eq!(state.saved, vec![3.0]);
+    }
+
+    #[test]
+    fn invalid_backward_shape_does_not_retire_valid_snapshot() {
+        let state = SavedForward::new(&[1.0, 2.0]).unwrap();
+        let lease = state.lease();
+        assert_eq!(
+            state.backward(lease, &[4.0]),
+            Err("shape mismatch")
+        );
+        assert_eq!(state.lease(), lease);
+        assert_eq!(state.saved, vec![1.0, 2.0]);
+        assert_eq!(
+            state.backward(lease, &[3.0, 4.0]).unwrap(),
+            gradient(&[1.0, 2.0], &[3.0, 4.0]).unwrap()
+        );
+    }
+
+    #[test]
+    fn caller_mutation_after_replacement_does_not_modify_saved_activation() {
+        let mut state = SavedForward::new(&[0.0]).unwrap();
+        let mut caller_owned = vec![2.0, -3.0];
+        let lease = state.replace(&caller_owned).unwrap();
+        caller_owned[0] = 900.0;
+        caller_owned.clear();
+        assert_eq!(state.saved, vec![2.0, -3.0]);
+        assert_eq!(
+            state.backward(lease, &[1.0, 2.0]).unwrap(),
+            gradient(&[2.0, -3.0], &[1.0, 2.0]).unwrap()
+        );
+    }
 }

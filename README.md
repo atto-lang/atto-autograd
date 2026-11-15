@@ -25,3 +25,15 @@ This describes the repository's intended purpose, not a verified list of impleme
 - [AttoLang](https://github.com/atto-lang)
 - [ML conformance](https://github.com/atto-lang/atto-ml-conformance)
 - [Language specification](https://github.com/atto-lang/atto-spec)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** Differentiation graph representation, gradient propagation, tape lifetime and numerical gradient checks.
+
+**Belongs elsewhere:** Base tensor shapes/layout kernels in atto-tensor; model-level orchestration in atto-ml; parity fixtures in atto-ml-conformance.
+
+**Security and portability boundary:** Do not retain borrowed buffers past their owner; bound graph growth and verify gradients with finite-difference, non-differentiable and cancellation tests.
+
+AttoLang is the public name; preserve existing Oreslang/.ores compatibility and use canonical .atto for new portable library source. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.

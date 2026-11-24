@@ -1,14 +1,45 @@
-# Oreslang Autograd
+> **AI agent instructions (organization-wide):** Before working on code, issues, or pull requests, read and follow the [organization `AGENTS.md`](https://github.com/atto-lang/.github/blob/main/AGENTS.md), including its **merge-first stealth-development policy**. Honor any repository-local `AGENTS.md`, explicit holds, and GitHub-enforced rules.
 
-Pure-Oreslang automatic differentiation, initially scalar reverse-mode primitives and then tensor reverse-mode with a verified topological tape. This is not a PyTorch wrapper.
+# atto-autograd
 
-## P0 acceptance
-- Independent analytic / finite-difference / differential gradient fixtures.
-- Deterministic gradient accumulation and explicit saved-value lifetime contracts.
-- No mutation of saved-forward intermediates without ownership/version proof.
+Automatic differentiation and computational graph infrastructure for AttoLang.
 
-See `docs/CONTRACT.md` after bootstrap PR.
+## Naming migration and language authority
 
-## Engineering policy: no Python
+This repository is maintained at [atto-lang/atto-autograd](https://github.com/atto-lang/atto-autograd); use `https://github.com/atto-lang/atto-autograd.git` for Git remotes and canonical `.atto` source examples. The normative language contract is [atto-spec](https://github.com/atto-lang/atto-spec), with executable guest evidence tracked by [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance). Follow current ownership, borrowing, effects, actor, and syntax rules there; do not infer implemented features from a README or unexecuted CI.
 
-Python is prohibited in this repository and throughout the `ores-truffle-oreslang` organization for scripts, tests, CI helpers, generators, analyzers, automation, and host tooling. Existing Python functionality must be migrated to **Rust** without weakening behavior, fixtures, or test coverage. The autograd implementation remains Oreslang; this rule specifically replaces Python tooling/reference code with Rust.
+## Scope
+
+Differentiable computation graphs, gradient propagation, and numerical correctness tests.
+
+## API and portability principles
+
+- Specify numerical/semantic behavior before assuming support on every backend.
+- Document input types, error behavior, shape and memory ownership requirements as applicable.
+- Distinguish CPU execution, SIMD, GPU offload, and other target-specific capabilities.
+
+## Verification
+
+Use checked-in tests, documented tolerances, and exact-commit runtime evidence. Host-only or compilation tests are not equivalent to executed AttoLang guest tests. Record backend gaps explicitly.
+
+## Development status
+
+This describes the repository's intended purpose, not a verified list of implemented features. Refer to checked-in code and CI for current functionality and validated commands.
+
+## Related
+
+- [AttoLang](https://github.com/atto-lang)
+- [ML conformance](https://github.com/atto-lang/atto-ml-conformance)
+- [Language specification](https://github.com/atto-lang/atto-spec)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** Differentiation graph representation, gradient propagation, tape lifetime and numerical gradient checks.
+
+**Belongs elsewhere:** Base tensor shapes/layout kernels in atto-tensor; model-level orchestration in atto-ml; parity fixtures in atto-ml-conformance.
+
+**Security and portability boundary:** Do not retain borrowed buffers past their owner; bound graph growth and verify gradients with finite-difference, non-differentiable and cancellation tests.
+
+AttoLang is the canonical project name; new source, examples and documentation use `.atto` and the `atto-lang` repository organization. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.

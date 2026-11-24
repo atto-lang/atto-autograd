@@ -47,6 +47,7 @@ check_repo "$tensor_root" "$ORESLANG_TENSOR_EXPECTED_SHA" Tensor \
   src/tensor.ores src/broadcast.ores src/gradients.ores \
   src/matmul_vjp.ores src/matmul_both_vjp.ores src/row_batches.ores \
   src/layout.atto tests/layout_smoke.ores tests/projected_alias_reject.ores \
+  src/softmax.ores src/attention.ores tests/softmax_smoke.ores tests/attention_smoke.ores \
   tests/smoke.ores tests/row_batches_smoke.ores \
   tests/matmul_vjp_smoke.ores tests/matmul_two_sided_vjp_smoke.ores \
   scripts/test.sh
@@ -77,7 +78,7 @@ printf 'PINNED_WORKSPACE_START backend=%s tensor=%s autograd=%s declared_compile
 # Give every fixture its own allowance; an unrelated total-suite 120s cap
 # would reject valid, independently-bounded Tensor executions.
 per_guest_timeout="${ORESLANG_GUEST_TIMEOUT_SEC:-120}"
-tensor_suite_timeout=$((per_guest_timeout * 6 + 30))
+tensor_suite_timeout=$((per_guest_timeout * 8 + 30))
 autograd_scalar_timeout=$((per_guest_timeout + 30))
 autograd_workspace_timeout=$((per_guest_timeout * 3 + 30))
 (cd "$tensor_root" && timeout -k 2s "${tensor_suite_timeout}s" sh scripts/test.sh) || { echo 'TENSOR_GUEST_SUITE_FAILED' >&2; exit 1; }

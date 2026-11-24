@@ -27,6 +27,7 @@ function makeWorkspace(t) {
       'src/tensor.ores', 'src/broadcast.ores', 'src/gradients.ores',
       'src/matmul_vjp.ores', 'src/matmul_both_vjp.ores', 'src/row_batches.ores',
       'src/layout.atto', 'tests/layout_smoke.ores', 'tests/projected_alias_reject.ores',
+      'src/softmax.ores', 'src/attention.ores', 'tests/softmax_smoke.ores', 'tests/attention_smoke.ores',
       'tests/smoke.ores', 'tests/row_batches_smoke.ores',
       'tests/matmul_vjp_smoke.ores', 'tests/matmul_two_sided_vjp_smoke.ores',
       'scripts/test.sh',
@@ -144,14 +145,14 @@ test('pinned workspace detects skip-worktree hidden source edits', (t) => {
 
 test('aggregate timeout accommodates each independently bounded guest fixture', () => {
   const script = readFileSync(hostScript, 'utf8');
-  assert.match(script, /tensor_suite_timeout=\$\(\(per_guest_timeout \* 6 \+ 30\)\)/);
+  assert.match(script, /tensor_suite_timeout=\$\(\(per_guest_timeout \* 8 \+ 30\)\)/);
   assert.match(script, /autograd_scalar_timeout=\$\(\(per_guest_timeout \+ 30\)\)/);
   assert.match(script, /autograd_workspace_timeout=\$\(\(per_guest_timeout \* 3 \+ 30\)\)/);
   assert.match(script, /timeout -k 2s "\$\{tensor_suite_timeout\}s"/);
   assert.match(script, /timeout -k 2s "\$\{autograd_scalar_timeout\}s"/);
   assert.match(script, /timeout -k 2s "\$\{autograd_workspace_timeout\}s"/);
   for (const seconds of [1, 5, 10, 30, 60, 120]) {
-    assert.ok(seconds * 6 + 30 > seconds * 6);
+    assert.ok(seconds * 8 + 30 > seconds * 8);
     assert.ok(seconds + 30 > seconds);
     assert.ok(seconds * 3 + 30 > seconds * 3);
   }

@@ -35,11 +35,11 @@ function referenceVjp(original,indices,saved,upstream,output) {
 }
 test("adapter calls tensor VJP only after saved-forward value recheck",()=>{
   assert.match(source,/pub fnc row_gather_vjp_with_saved_f64_checked_into/);
-  assert.match(source,/gather_rows_2d_f64_into\(original, indices, forward_scratch\)/);
+  assert.match(source,/RowBatches\.gather_rows_2d_f64_into\(\s*rt borrow original, rt borrow indices, rt mut borrow forward_scratch\s*\)/);
   assert.match(source,/stale saved row-gather activation/);
-  assert.match(source,/return gather_rows_vjp_f64_checked_into\(/);
+  assert.match(source,/return RowBatches\.gather_rows_vjp_f64_checked_into\(/);
   assert(source.indexOf("stale saved row-gather activation") <
-         source.indexOf("return gather_rows_vjp_f64_checked_into("));
+         source.indexOf("return RowBatches.gather_rows_vjp_f64_checked_into("));
   assert.match(guest,/ORES_AUTOGRAD_ROW_GATHER_VJP_PASS/);
 });
 test("duplicate-row VJP and zero-contribution rows match expected adjoint",()=>{

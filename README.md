@@ -18,6 +18,19 @@ Differentiable computation graphs, gradient propagation, and numerical correctne
 - Document input types, error behavior, shape and memory ownership requirements as applicable.
 - Distinguish CPU execution, SIMD, GPU offload, and other target-specific capabilities.
 
+## CPU tensor gradients
+
+Check out `atto-tensor` next to this repository. `TensorVjp`, `RowGatherVjp`,
+and `TensorTrainingVjp` expose checked gradients for broadcast add and
+multiply, row gather, ReLU, mean squared error, and gradient accumulation.
+They borrow inputs and use caller-owned scratch and output buffers. The
+workspace guest suite runs the three tensor gradient fixtures with the
+compiler selected by `ORESLANG_BIN`.
+
+`TapeOps` provides a scalar forward and reverse pass. Its `stop_gradient`
+operation (opcode `4`) copies the operand in the forward pass and stops
+gradient propagation to that operand in the reverse pass.
+
 ## Verification
 
 Use checked-in tests, documented tolerances, and exact-commit runtime evidence. Host-only or compilation tests are not equivalent to executed AttoLang guest tests. Record backend gaps explicitly.

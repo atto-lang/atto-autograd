@@ -24,7 +24,7 @@ command -v git >/dev/null 2>&1 || unconfigured 'git unavailable'
 command -v timeout >/dev/null 2>&1 || unconfigured 'bounded timeout unavailable'
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || unconfigured 'script location unavailable'
 autograd_root=$(CDPATH='' cd -- "$script_dir/.." && pwd -P) || unconfigured 'Autograd checkout unavailable'
-tensor_root=$(CDPATH='' cd -- "$autograd_root/../oreslang-tensor" && pwd -P) || unconfigured 'sibling Tensor checkout unavailable'
+tensor_root=$(CDPATH='' cd -- "$autograd_root/../atto-tensor" && pwd -P) || unconfigured 'sibling Tensor checkout unavailable'
 check_repo() {
   root="$1"; expected="$2"; label="$3"; shift 3
   [ -d "$root/.git" ] || unconfigured "$label is not an independent Git checkout"
@@ -46,6 +46,7 @@ check_repo() {
 check_repo "$tensor_root" "$ORESLANG_TENSOR_EXPECTED_SHA" Tensor \
   src/tensor.ores src/broadcast.ores src/gradients.ores \
   src/matmul_vjp.ores src/matmul_both_vjp.ores src/row_batches.ores \
+  src/layout.atto tests/layout_smoke.ores tests/projected_alias_reject.ores \
   tests/smoke.ores tests/row_batches_smoke.ores \
   tests/matmul_vjp_smoke.ores tests/matmul_two_sided_vjp_smoke.ores \
   scripts/test.sh
@@ -74,9 +75,9 @@ printf 'PINNED_WORKSPACE_START backend=%s tensor=%s autograd=%s declared_compile
   "$ORESLANG_COMPILER_SOURCE_SHA" "$actual_bin_hash"
 # The individual guest harnesses each enforce ORESLANG_GUEST_TIMEOUT_SEC.
 # Give every fixture its own allowance; an unrelated total-suite 120s cap
-# would reject four valid, independently-bounded Tensor executions.
+# would reject valid, independently-bounded Tensor executions.
 per_guest_timeout="${ORESLANG_GUEST_TIMEOUT_SEC:-120}"
-tensor_suite_timeout=$((per_guest_timeout * 4 + 30))
+tensor_suite_timeout=$((per_guest_timeout * 6 + 30))
 autograd_scalar_timeout=$((per_guest_timeout + 30))
 autograd_workspace_timeout=$((per_guest_timeout * 3 + 30))
 (cd "$tensor_root" && timeout -k 2s "${tensor_suite_timeout}s" sh scripts/test.sh) || { echo 'TENSOR_GUEST_SUITE_FAILED' >&2; exit 1; }

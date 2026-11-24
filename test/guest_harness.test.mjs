@@ -41,7 +41,7 @@ test('tensor workspace smoke rejects silent success but accepts distinct synthet
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cwd = join(dir, 'oreslang-autograd');
   const scripts = join(cwd, 'scripts');
-  const tensorSrc = join(dir, 'oreslang-tensor', 'src');
+  const tensorSrc = join(dir, 'atto-tensor', 'src');
   mkdirSync(scripts, { recursive: true });
   mkdirSync(tensorSrc, { recursive: true });
   for (const name of ['test-workspace.sh', 'verify-guest-case.sh']) {

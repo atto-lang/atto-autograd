@@ -2,144 +2,132 @@
 // Finite f64 values, row-major TensorF64, caller-owned disjoint buffers.
 // These checks are runtime guards, NOT compiler-proven unique Array<T> loans.
 // An actor must pin/freeze saved tensors to one graph/weight generation.
-import class TensorF64 from '../../oreslang-tensor/src/tensor';
-import fnc validate_tensor, checked_numel from '../../oreslang-tensor/src/tensor';
+import class TensorF64 from "../../atto-tensor/src/tensor.ores";
+import module TensorOps from "../../atto-tensor/src/tensor.ores";
 
-fnc count_floats(List<float> items): int {
-  let int n = 0;
-  for const item of items do
-    n = n + 1;
-  done
-  return n;
-}
-fnc count_ints(List<int> items): int {
-  let int n = 0;
-  for const item of items do
-    n = n + 1;
-  done
-  return n;
-}
-fnc finite_f64(float x): bool {
-  return (x - x) == 0.0;
-}
-fnc same_shape(List<int> left, List<int> right): bool {
-  val int n = count_ints(left);
-  if n != count_ints(right); do
-    return false;
-  fi
-  for int i = 0; i < n; i++ do
-    if left[i] != right[i]; do
+define module TensorTrainingVjp as
+  fnc finite_f64(float x): bool {
+    return (x - x) == 0.0;
+  }
+  fnc same_shape(borrow List<int> left, borrow List<int> right): bool {
+    val int n = left.size;
+    if n != right.size; do
       return false;
     fi
-  done
-  return true;
-}
+    for int i = 0; i < n; i++ do
+      if left[i] != right[i]; do
+        return false;
+      fi
+    done
+    return true;
+  }
 
-// Reverse-mode derivative of saved ReLU(preactivation). ReLU'(0)=0.
-// Validate the *saved* forward activation first; a stale saved tensor must
-// not silently drive a gradient. All checks precede output publication.
-pub fnc relu_vjp_f64_checked_into(
-  TensorF64 preactivation,
-  TensorF64 saved_activation,
-  TensorF64 upstream,
-  List<float> mut output
-): Result<bool, String> {
-  if output is preactivation.values ||
-     output is saved_activation.values || output is upstream.values; do
-    return Err("relu VJP destination aliases saved tensors");
-  fi
-  if validate_tensor(preactivation).is_err() ||
-     validate_tensor(saved_activation).is_err() ||
-     validate_tensor(upstream).is_err(); do
-    return Err("relu VJP invalid tensor");
-  fi
-  if !same_shape(preactivation.shape, saved_activation.shape) ||
-     !same_shape(preactivation.shape, upstream.shape); do
-    return Err("relu VJP incompatible shapes");
-  fi
-  val int n = count_floats(preactivation.values);
-  if checked_numel(preactivation.shape, count_floats(output)).is_err(); do
-    return Err("relu VJP gradient length mismatch");
-  fi
-  for int i = 0; i < n; i++ do
-    let float expected = 0.0;
-    if preactivation.values[i] > 0.0; do
-      expected = preactivation.values[i];
+  // Reverse-mode derivative of saved ReLU(preactivation). ReLU'(0)=0.
+  // Validate the *saved* forward activation first; a stale saved tensor must
+  // not silently drive a gradient. All checks precede output publication.
+  pub fnc relu_vjp_f64_checked_into(
+    borrow TensorF64 preactivation,
+    borrow TensorF64 saved_activation,
+    borrow TensorF64 upstream,
+    borrow mut List<float> output
+  ): Result<bool, String> {
+    if output is preactivation.values ||
+       output is saved_activation.values || output is upstream.values; do
+      return Err("relu VJP destination aliases saved tensors");
     fi
-    if saved_activation.values[i] != expected; do
-      return Err("relu VJP stale activation");
+    if TensorOps.validate_tensor(rt borrow preactivation).is_err() ||
+       TensorOps.validate_tensor(rt borrow saved_activation).is_err() ||
+       TensorOps.validate_tensor(rt borrow upstream).is_err(); do
+      return Err("relu VJP invalid tensor");
     fi
-  done
-  // All inputs are finite; copying upstream or zero cannot overflow.
-  for int i = 0; i < n; i++ do
-    if preactivation.values[i] > 0.0; do
-      output[i] = upstream.values[i];
-    else
-      output[i] = 0.0;
+    if !same_shape(rt borrow preactivation.shape, rt borrow saved_activation.shape) ||
+       !same_shape(rt borrow preactivation.shape, rt borrow upstream.shape); do
+      return Err("relu VJP incompatible shapes");
     fi
-  done
-  return Ok(true);
-}
+    val int n = preactivation.values.size;
+    if TensorOps.checked_numel(rt borrow preactivation.shape, output.size).is_err(); do
+      return Err("relu VJP gradient length mismatch");
+    fi
+    for int i = 0; i < n; i++ do
+      let float expected = 0.0;
+      if preactivation.values[i] > 0.0; do
+        expected = preactivation.values[i];
+      fi
+      if saved_activation.values[i] != expected; do
+        return Err("relu VJP stale activation");
+      fi
+    done
+    // All inputs are finite; copying upstream or zero cannot overflow.
+    for int i = 0; i < n; i++ do
+      if preactivation.values[i] > 0.0; do
+        output[i] = upstream.values[i];
+      else
+        output[i] = 0.0;
+      fi
+    done
+    return Ok(true);
+  }
 
-// For L = mean((prediction - target)^2), produce dL/dprediction.
-// A scalar seed of 1.0 is assumed. Empty reductions are rejected.
-// All candidate gradients are checked before writing ANY output element.
-pub fnc mse_vjp_f64_checked_into(
-  TensorF64 prediction,
-  TensorF64 target,
-  List<float> mut output
-): Result<bool, String> {
-  if output is prediction.values || output is target.values; do
-    return Err("mse VJP gradient aliases inputs");
-  fi
-  if validate_tensor(prediction).is_err() ||
-     validate_tensor(target).is_err(); do
-    return Err("mse VJP invalid tensor");
-  fi
-  if !same_shape(prediction.shape, target.shape); do
-    return Err("mse VJP shape mismatch");
-  fi
-  val int n = count_floats(prediction.values);
-  if n == 0 || count_floats(output) != n; do
-    return Err("mse VJP empty or incorrect output");
-  fi
-  val float scale = 2.0 / n;
-  for int i = 0; i < n; i++ do
-    val float candidate = scale * (prediction.values[i] - target.values[i]);
-    if !finite_f64(candidate); do
-      return Err("mse VJP nonfinite candidate");
+  // For L = mean((prediction - target)^2), produce dL/dprediction.
+  // A scalar seed of 1.0 is assumed. Empty reductions are rejected.
+  // All candidate gradients are checked before writing ANY output element.
+  pub fnc mse_vjp_f64_checked_into(
+    borrow TensorF64 prediction,
+    borrow TensorF64 target,
+    borrow mut List<float> output
+  ): Result<bool, String> {
+    if output is prediction.values || output is target.values; do
+      return Err("mse VJP gradient aliases inputs");
     fi
-  done
-  for int i = 0; i < n; i++ do
-    output[i] = scale * (prediction.values[i] - target.values[i]);
-  done
-  return Ok(true);
-}
+    if TensorOps.validate_tensor(rt borrow prediction).is_err() ||
+       TensorOps.validate_tensor(rt borrow target).is_err(); do
+      return Err("mse VJP invalid tensor");
+    fi
+    if !same_shape(rt borrow prediction.shape, rt borrow target.shape); do
+      return Err("mse VJP shape mismatch");
+    fi
+    val int n = prediction.values.size;
+    if n == 0 || output.size != n; do
+      return Err("mse VJP empty or incorrect output");
+    fi
+    val float scale = 2.0 / Integer.toFloatExact(n);
+    for int i = 0; i < n; i++ do
+      val float candidate = scale * (prediction.values[i] - target.values[i]);
+      if !finite_f64(candidate); do
+        return Err("mse VJP nonfinite candidate");
+      fi
+    done
+    for int i = 0; i < n; i++ do
+      output[i] = scale * (prediction.values[i] - target.values[i]);
+    done
+    return Ok(true);
+  }
 
-// Deterministic fan-in for branched DAGs and repeated operands.
-// Preflight overflow; never mutate the published gradient on an error.
-// Actor-level duplicate-gradient admission and graph-version fencing are
-// separate requirements and MUST NOT be inferred from this numeric primitive.
-pub fnc gradient_fanin_f64_checked_into(
-  List<float> first,
-  List<float> second,
-  List<float> mut output
-): Result<bool, String> {
-  if output is first || output is second; do
-    return Err("gradient fan-in requires disjoint output");
-  fi
-  val int n = count_floats(first);
-  if count_floats(second) != n || count_floats(output) != n; do
-    return Err("gradient fan-in length mismatch");
-  fi
-  for int i = 0; i < n; i++ do
-    if !finite_f64(first[i]) || !finite_f64(second[i]) ||
-       !finite_f64(first[i] + second[i]); do
-      return Err("gradient fan-in nonfinite result");
+  // Deterministic fan-in for branched DAGs and repeated operands.
+  // Preflight overflow; never mutate the published gradient on an error.
+  // Actor-level duplicate-gradient admission and graph-version fencing are
+  // separate requirements and MUST NOT be inferred from this numeric primitive.
+  pub fnc gradient_fanin_f64_checked_into(
+    borrow List<float> first,
+    borrow List<float> second,
+    borrow mut List<float> output
+  ): Result<bool, String> {
+    if output is first || output is second; do
+      return Err("gradient fan-in requires disjoint output");
     fi
-  done
-  for int i = 0; i < n; i++ do
-    output[i] = first[i] + second[i];
-  done
-  return Ok(true);
-}
+    val int n = first.size;
+    if second.size != n || output.size != n; do
+      return Err("gradient fan-in length mismatch");
+    fi
+    for int i = 0; i < n; i++ do
+      if !finite_f64(first[i]) || !finite_f64(second[i]) ||
+         !finite_f64(first[i] + second[i]); do
+        return Err("gradient fan-in nonfinite result");
+      fi
+    done
+    for int i = 0; i < n; i++ do
+      output[i] = first[i] + second[i];
+    done
+    return Ok(true);
+  }
+end

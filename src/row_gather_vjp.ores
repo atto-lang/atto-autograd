@@ -2,92 +2,82 @@
 // This checks the saved forward tensor before its VJP. It DOES NOT prove
 // generation identity, freeze List backing, provide eager tape recording,
 // or authorize state loans / device buffers across actor boundaries.
-import class TensorF64 from '../../oreslang-tensor/src/tensor';
-import fnc validate_tensor from '../../oreslang-tensor/src/tensor';
-import fnc gather_rows_2d_f64_into, gather_rows_vjp_f64_checked_into from '../../oreslang-tensor/src/row_batches';
+import class TensorF64 from "../../atto-tensor/src/tensor.ores";
+import module TensorOps from "../../atto-tensor/src/tensor.ores";
+import module RowBatches from "../../atto-tensor/src/row_batches.ores";
 
-fnc count_floats(List<float> values): int {
-  let int n = 0;
-  for const value of values do
-    n = n + 1;
-  done
-  return n;
-}
-fnc count_ints(List<int> values): int {
-  let int n = 0;
-  for const value of values do
-    n = n + 1;
-  done
-  return n;
-}
-
-// dInput for saved_forward = gather_rows(original, indices).
-// The saved values MUST match a verified recomputation from current original
-// values. Caller must separately bind both to the SAME frozen graph-generation
-// lease in the final production autograd runtime.
-//
-// Scratch buffers can change on failure; gradient_output CANNOT.
-pub fnc row_gather_vjp_with_saved_f64_checked_into(
-  TensorF64 original,
-  List<int> indices,
-  TensorF64 saved_forward,
-  TensorF64 upstream,
-  List<float> mut forward_scratch,
-  List<float> mut gradient_scratch,
-  List<float> mut gradient_output
-): Result<bool, String> {
-  if forward_scratch is gradient_scratch ||
-     forward_scratch is gradient_output ||
-     gradient_scratch is gradient_output; do
-    return Err("row gather VJP scratch and outputs overlap");
-  fi
-  if forward_scratch is original.values ||
-     forward_scratch is saved_forward.values ||
-     forward_scratch is upstream.values ||
-     gradient_scratch is original.values ||
-     gradient_scratch is saved_forward.values ||
-     gradient_scratch is upstream.values ||
-     gradient_output is original.values ||
-     gradient_output is saved_forward.values ||
-     gradient_output is upstream.values; do
-    return Err("row gather VJP mutable output aliases saved inputs");
-  fi
-  if validate_tensor(original).is_err() ||
-     validate_tensor(saved_forward).is_err() ||
-     validate_tensor(upstream).is_err(); do
-    return Err("row gather VJP invalid tensor");
-  fi
-  if count_ints(original.shape) != 2 ||
-     count_ints(saved_forward.shape) != 2 ||
-     count_ints(upstream.shape) != 2; do
-    return Err("row gather VJP requires rank 2");
-  fi
-  val int selected = count_ints(indices);
-  val int columns = original.shape[1];
-  if saved_forward.shape[0] != selected ||
-     saved_forward.shape[1] != columns ||
-     upstream.shape[0] != selected ||
-     upstream.shape[1] != columns; do
-    return Err("row gather VJP saved/upstream shape mismatch");
-  fi
-  if count_floats(forward_scratch) != count_floats(saved_forward.values); do
-    return Err("row gather VJP forward scratch length mismatch");
-  fi
-  if count_floats(gradient_scratch) != count_floats(original.values) ||
-     count_floats(gradient_output) != count_floats(original.values); do
-    return Err("row gather VJP gradient destination length mismatch");
-  fi
-
-  if gather_rows_2d_f64_into(original, indices, forward_scratch).is_err(); do
-    return Err("row gather VJP forward recomputation rejected");
-  fi
-  for int i = 0; i < count_floats(forward_scratch); i++ do
-    if forward_scratch[i] != saved_forward.values[i]; do
-      return Err("stale saved row-gather activation");
+define module RowGatherVjp as
+  // dInput for saved_forward = gather_rows(original, indices).
+  // The saved values MUST match a verified recomputation from current original
+  // values. Caller must separately bind both to the SAME frozen graph-generation
+  // lease in the final production autograd runtime.
+  //
+  // Scratch buffers can change on failure; gradient_output CANNOT.
+  pub fnc row_gather_vjp_with_saved_f64_checked_into(
+    borrow TensorF64 original,
+    borrow List<int> indices,
+    borrow TensorF64 saved_forward,
+    borrow TensorF64 upstream,
+    borrow mut List<float> forward_scratch,
+    borrow mut List<float> gradient_scratch,
+    borrow mut List<float> gradient_output
+  ): Result<bool, String> {
+    if forward_scratch is gradient_scratch ||
+       forward_scratch is gradient_output ||
+       gradient_scratch is gradient_output; do
+      return Err("row gather VJP scratch and outputs overlap");
     fi
-  done
+    if forward_scratch is original.values ||
+       forward_scratch is saved_forward.values ||
+       forward_scratch is upstream.values ||
+       gradient_scratch is original.values ||
+       gradient_scratch is saved_forward.values ||
+       gradient_scratch is upstream.values ||
+       gradient_output is original.values ||
+       gradient_output is saved_forward.values ||
+       gradient_output is upstream.values; do
+      return Err("row gather VJP mutable output aliases saved inputs");
+    fi
+    if TensorOps.validate_tensor(rt borrow original).is_err() ||
+       TensorOps.validate_tensor(rt borrow saved_forward).is_err() ||
+       TensorOps.validate_tensor(rt borrow upstream).is_err(); do
+      return Err("row gather VJP invalid tensor");
+    fi
+    if original.shape.size != 2 ||
+       saved_forward.shape.size != 2 ||
+       upstream.shape.size != 2; do
+      return Err("row gather VJP requires rank 2");
+    fi
+    val int selected = indices.size;
+    val int columns = original.shape[1];
+    if saved_forward.shape[0] != selected ||
+       saved_forward.shape[1] != columns ||
+       upstream.shape[0] != selected ||
+       upstream.shape[1] != columns; do
+      return Err("row gather VJP saved/upstream shape mismatch");
+    fi
+    if forward_scratch.size != saved_forward.values.size; do
+      return Err("row gather VJP forward scratch length mismatch");
+    fi
+    if gradient_scratch.size != original.values.size ||
+       gradient_output.size != original.values.size; do
+      return Err("row gather VJP gradient destination length mismatch");
+    fi
 
-  return gather_rows_vjp_f64_checked_into(
-    upstream, indices, original.shape, gradient_scratch, gradient_output
-  );
-}
+    if RowBatches.gather_rows_2d_f64_into(
+      rt borrow original, rt borrow indices, rt mut borrow forward_scratch
+    ).is_err(); do
+      return Err("row gather VJP forward recomputation rejected");
+    fi
+    for int i = 0; i < forward_scratch.size; i++ do
+      if forward_scratch[i] != saved_forward.values[i]; do
+        return Err("stale saved row-gather activation");
+      fi
+    done
+
+    return RowBatches.gather_rows_vjp_f64_checked_into(
+      rt borrow upstream, rt borrow indices, rt borrow original.shape,
+      rt mut borrow gradient_scratch, rt mut borrow gradient_output
+    );
+  }
+end

@@ -62,13 +62,13 @@ test('checked forward atomicity on overflow is a separate guest acceptance case'
   assert.equal(Number.isFinite(2.0), true);
   assert.equal(Number.isFinite(1.0e308 * 2.0), false);
   assert.match(smoke, /val TapeF64 forward_overflow = new TapeF64/);
-  assert.match(smoke, /forward_f64_into\(\s*forward_overflow,raw_forward_scratch/);
-  assert.match(smoke, /forward_checked_into\(\s*forward_overflow,safe_forward_scratch,forward_published/);
+  assert.match(smoke, /TapeOps\.forward_f64_into\(\s*rt borrow forward_overflow, rt mut borrow raw_forward_scratch/);
+  assert.match(smoke, /ForwardChecked\.forward_checked_into\(\s*rt borrow forward_overflow, rt mut borrow safe_forward_scratch, rt mut borrow forward_published/);
   for (const [index, sentinel] of [[0, 77], [1, 78], [2, 79]]) {
     assert.ok(smoke.includes(`forward_published[${index}],${sentinel}.0`));
   }
   const checked = readFileSync(new URL('../src/forward_checked.ores', import.meta.url), 'utf8');
-  const call = checked.indexOf('if forward_f64_into(tape, scratch).is_err(); do');
+  const call = checked.indexOf('if TapeOps.forward_f64_into(rt borrow tape, rt mut borrow scratch).is_err(); do');
   const publish = checked.indexOf('output[i] = scratch[i];');
   assert.ok(call >= 0 && publish > call, 'failure return must precede publication');
   assert.match(checked.slice(call,publish), /return Err\("forward failed"\);/);

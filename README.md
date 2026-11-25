@@ -1,25 +1,51 @@
-# Oreslang Autograd
+> **AI agent instructions (organization-wide):** Before working on code, issues, or pull requests, read and follow the [organization `AGENTS.md`](https://github.com/atto-lang/.github/blob/main/AGENTS.md), including its **merge-first stealth-development policy**. Honor any repository-local `AGENTS.md`, explicit holds, and GitHub-enforced rules.
 
-Pure-Oreslang automatic differentiation, initially scalar reverse-mode primitives and then tensor reverse-mode with a verified topological tape. This is not a PyTorch wrapper.
+# atto-autograd
 
-## P0 acceptance
-- Independent analytic / finite-difference / differential gradient fixtures.
-- Deterministic gradient accumulation and explicit saved-value lifetime contracts.
-- No mutation of saved-forward intermediates without ownership/version proof.
+Automatic differentiation and computational graph infrastructure for AttoLang.
 
-See `docs/CONTRACT.md` after bootstrap PR.
+## Naming migration and language authority
 
-## Engineering policy: no Python
+This repository is maintained at [atto-lang/atto-autograd](https://github.com/atto-lang/atto-autograd); use `https://github.com/atto-lang/atto-autograd.git` for Git remotes and canonical `.atto` source examples. The normative language contract is [atto-spec](https://github.com/atto-lang/atto-spec), with executable guest evidence tracked by [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance). Follow current ownership, borrowing, effects, actor, and syntax rules there; do not infer implemented features from a README or unexecuted CI.
 
-Python is prohibited in this repository and throughout the `ores-truffle-oreslang` organization for scripts, tests, CI helpers, generators, analyzers, automation, and host tooling. Existing Python functionality must be migrated to **Rust** without weakening behavior, fixtures, or test coverage. The autograd implementation remains Oreslang; this rule specifically replaces Python tooling/reference code with Rust.
+## Scope
 
-## Repository ownership and migration (2026-11-08)
+Differentiable computation graphs, gradient propagation, and numerical correctness tests.
 
-**AttoLang** is the public language, formerly Oreslang. The repository remains `ores-truffle-oreslang/oreslang-autograd` in the legacy org until approved cutover. Preserve supported `.ores` sources, old import paths and package/CLI names; don't infer backend completeness from a README.
+## API and portability principles
 
-- **Belongs here:** automatic differentiation primitives and gradient correctness tests.
-- **Excluded:** managed training cluster operations or unverifiable numerical parity.
-- **Organization split:** [atto-lang](https://github.com/atto-lang) owns portable core/std, compilers, language libraries, test harnesses and demos; [atto-co](https://github.com/atto-co) independently owns cloud hosting, deployment, identity, billing and managed services. Existing `atto-*` repos are not automatically migrated copies or equivalent codebases.
-- **Proposed first transfer (not executed):** retain original name, repo ID and Git history in `atto-lang/oreslang-autograd` via approved GitHub ownership transfer. No direct source-org → `atto-co` moves are authorized currently; future product carve-outs need separate signoffs.
+- Specify numerical/semantic behavior before assuming support on every backend.
+- Document input types, error behavior, shape and memory ownership requirements as applicable.
+- Distinguish CPU execution, SIMD, GPU offload, and other target-specific capabilities.
 
-**Maintainer safety procedure:** coordinate exact source head, owners and rollback in [issue #26](https://github.com/ores-truffle-oreslang/.github/issues/26), then follow private [runbook draft #25](https://github.com/ores-truffle-oreslang/.github/pull/25). Obtain source/target admin and independent security approval; inventory exact SHA/tree, numeric ID, target branch protections/rulesets, access, open PRs, releases/tags, packages, consumers, Actions/runners, secrets, GitHub Apps, webhooks and Pages. Don't clone/mirror private code as transfer workaround. After transfer verify ID/tree/history/controls, update links and rerun exact-head CI; **`steps=[]`/`null` is `NOT_EXECUTED`**, and host-only/source-free checks are not native guest/compiler evidence.
+## Verification
+
+Use checked-in tests, documented tolerances, and exact-commit runtime evidence. Host-only or compilation tests are not equivalent to executed AttoLang guest tests. Record backend gaps explicitly.
+
+## Development status
+
+This describes the repository's intended purpose, not a verified list of implemented features. Refer to checked-in code and CI for current functionality and validated commands.
+
+## Related
+
+- [AttoLang](https://github.com/atto-lang)
+- [ML conformance](https://github.com/atto-lang/atto-ml-conformance)
+- [Language specification](https://github.com/atto-lang/atto-spec)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** Differentiation graph representation, gradient propagation, tape lifetime and numerical gradient checks.
+
+**Belongs elsewhere:** Base tensor shapes/layout kernels in atto-tensor; model-level orchestration in atto-ml; parity fixtures in atto-ml-conformance.
+
+**Security and portability boundary:** Do not retain borrowed buffers past their owner; bound graph growth and verify gradients with finite-difference, non-differentiable and cancellation tests.
+
+AttoLang is the canonical project name; new source, examples and documentation use `.atto` and the `atto-lang` repository organization. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
+
+## Organization boundaries and legacy compatibility
+
+Autograd owns differentiation, not managed training-cluster operations. Independently validate analytic and finite-difference gradients, deterministic accumulation and saved-value lifetimes. New portable language libraries, compilers, tooling and conformance belong in AttoLang; managed cloud hosting, deployment, tenant identity and billing belong in separately governed services. Preserve supported legacy .ores source and historical package/CLI aliases until compiler-backed .atto replacements and consumers are validated. Similar repository names do not establish an identity-preserving transfer or source parity.
+
+Any future repository transfer requires an approved owner and rollback plan, independently authorized source and destination, recorded numeric repository IDs and commit/tree, verified visibility, rulesets, access, releases, packages, consumers, webhooks, Apps, secrets and runner continuity. Never transfer private source without separate explicit authorization. Verify identity, history and controls after a transfer and rerun exact-head CI with executed steps; zero-step and host-only tests do not certify native guest execution.

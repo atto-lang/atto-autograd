@@ -1,0 +1,37 @@
+import class TapeF64 from "./tape.ores";
+import module TapeOps from "./tape.ores";
+
+define module BackwardChecked as
+  pub fnc backward_checked_into(
+    borrow TapeF64 tape,
+    borrow List<float> saved,
+    int root,
+    float seed,
+    borrow mut List<float> scratch,
+    borrow mut List<float> output
+  ): Result<bool, String> {
+    if scratch is output || scratch is saved || output is saved; do
+      return Err("aliased gradient buffers");
+    fi
+    if scratch is tape.leaf_values || output is tape.leaf_values; do
+      return Err("gradient alias with tape");
+    fi
+    val int n = output.size;
+    if n != scratch.size; do
+      return Err("gradient buffer length mismatch");
+    fi
+    if TapeOps.backward_f64_into(rt borrow tape, rt borrow saved, root, seed, rt mut borrow scratch).is_err(); do
+      return Err("backward failed");
+    fi
+    for int i = 0; i < n; i++ do
+      val float value = scratch[i];
+      if (value - value) != 0.0; do
+        return Err("nonfinite gradient; output unchanged");
+      fi
+    done
+    for int i = 0; i < n; i++ do
+      output[i] = scratch[i];
+    done
+    return Ok(true);
+  }
+end

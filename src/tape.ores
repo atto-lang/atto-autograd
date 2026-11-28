@@ -1,0 +1,225 @@
+// Pure-Oreslang bounded scalar reverse-mode differentiation.
+// Opcode 0=leaf, 1=add, 2=multiply, 3=ReLU, 4=stop_gradient.
+// ReLU uses the zero subgradient at zero.
+// Edges must point to STRICTLY earlier nodes: a verified DAG, no cycles.
+// Storage is caller-owned List<T> until unique buffer capabilities land.
+define pub class TapeF64 as
+  pub val List<int> opcode;
+  pub val List<int> left;
+  pub val List<int> right;
+  pub val List<float> leaf_values;
+end
+
+define module TapeOps as
+  fnc finite_f64(float x): bool {
+    return (x - x) == 0.0;
+  }
+
+  // Full validation precedes ALL forward or backward output writes.
+  pub fnc validate_tape(borrow TapeF64 tape): Result<int, String> {
+    val int n = tape.opcode.size;
+    if n < 1 || n > 8192; do
+      return Err("tape node count outside P0 limits");
+    fi
+    if tape.left.size != n; do
+      return Err("left edge count mismatch");
+    fi
+    if tape.right.size != n; do
+      return Err("right edge count mismatch");
+    fi
+    if tape.leaf_values.size != n; do
+      return Err("leaf value count mismatch");
+    fi
+    for int i = 0; i < n; i++ do
+      val int op = tape.opcode[i];
+      if op == 0; do
+        if tape.left[i] != -1 || tape.right[i] != -1; do
+          return Err("leaf must have sentinel edges");
+        fi
+        if !finite_f64(tape.leaf_values[i]); do
+          return Err("leaf value must be finite");
+        fi
+      else
+        if op != 1 && op != 2 && op != 3 && op != 4; do
+          return Err("unsupported operation");
+        fi
+        if tape.left[i] < 0 || tape.left[i] >= i; do
+          return Err("left operand must precede node");
+        fi
+        if op == 3 || op == 4; do
+          if tape.right[i] != -1; do
+            return Err("unary operation must have sentinel right edge");
+          fi
+        else
+          if tape.right[i] < 0 || tape.right[i] >= i; do
+            return Err("right operand must precede node");
+          fi
+        fi
+      fi
+    done
+    return Ok(n);
+  }
+
+  pub fnc forward_f64_into(
+    borrow TapeF64 tape,
+    borrow mut List<float> output
+  ): Result<bool, String> {
+    val Result<int, String> checked = validate_tape(rt borrow tape);
+    if checked.is_err(); do
+      return Err("invalid differentiation tape");
+    fi
+    val int n = checked.unwrap();
+    if output.size != n; do
+      return Err("forward output length mismatch");
+    fi
+    if output is tape.leaf_values; do
+      return Err("forward output aliases tape inputs");
+    fi
+    for int i = 0; i < n; i++ do
+      val int op = tape.opcode[i];
+      if op == 0; do
+        output[i] = tape.leaf_values[i];
+      else
+        val int a = tape.left[i];
+        val int b = tape.right[i];
+        if op == 1; do
+          output[i] = output[a] + output[b];
+        elif op == 2; do
+          output[i] = output[a] * output[b];
+        elif op == 4; do
+          output[i] = output[a];
+        else
+          if output[a] > 0.0; do
+            output[i] = output[a];
+          else
+            output[i] = 0.0;
+          fi
+        fi
+      fi
+      if !finite_f64(output[i]); do
+        return Err("nonfinite forward intermediate");
+      fi
+    done
+    return Ok(true);
+  }
+
+  // Reverse topological accumulation; shared operands accumulate twice.
+  // Reject nonfinite intermediate gradients even on the direct/raw API.
+  // Raw scratch may have changed on error; backward_checked_into is the
+  // transactional public-output wrapper.
+  // Caller must provide forward values from the SAME immutable tape generation.
+  // This API deliberately cannot mutate the saved forward values.
+  pub fnc backward_f64_into(
+    borrow TapeF64 tape,
+    borrow List<float> forward_values,
+    int root,
+    float seed,
+    borrow mut List<float> gradients
+  ): Result<bool, String> {
+    val Result<int, String> checked = validate_tape(rt borrow tape);
+    if checked.is_err(); do
+      return Err("invalid differentiation tape");
+    fi
+    val int n = checked.unwrap();
+    if root < 0 || root >= n; do
+      return Err("invalid backward root");
+    fi
+    if forward_values.size != n; do
+      return Err("saved forward value count mismatch");
+    fi
+    if gradients.size != n; do
+      return Err("gradient output length mismatch");
+    fi
+    if gradients is forward_values || gradients is tape.leaf_values; do
+      return Err("gradient output aliases saved inputs");
+    fi
+    if !finite_f64(seed); do
+      return Err("nonfinite backward seed");
+    fi
+    for int i = 0; i < n; i++ do
+      val float saved = forward_values[i];
+      if !finite_f64(saved); do
+        return Err("nonfinite saved activation");
+      fi
+      val int op = tape.opcode[i];
+      if op == 0; do
+        if saved != tape.leaf_values[i]; do
+          return Err("stale leaf activation");
+        fi
+      else
+        val int a = tape.left[i];
+        val int b = tape.right[i];
+        if op == 1; do
+          if saved != forward_values[a] + forward_values[b]; do
+            return Err("stale sum activation");
+          fi
+        elif op == 2; do
+          if saved != forward_values[a] * forward_values[b]; do
+            return Err("stale product activation");
+          fi
+        elif op == 4; do
+          if saved != forward_values[a]; do
+            return Err("stale stop_gradient activation");
+          fi
+        else
+          let float expected = 0.0;
+          if forward_values[a] > 0.0; do
+            expected = forward_values[a];
+          fi
+          if saved != expected; do
+            return Err("stale relu activation");
+          fi
+        fi
+      fi
+    done
+    for int i = 0; i < n; i++ do
+      gradients[i] = 0.0;
+    done
+    gradients[root] = seed;
+    for int i = n - 1; i >= 0; i-- do
+      val int op = tape.opcode[i];
+      if op == 1; do
+        val int a = tape.left[i];
+        val int b = tape.right[i];
+        val float next_left = gradients[a] + gradients[i];
+        if !finite_f64(next_left); do
+          return Err("nonfinite backward add gradient");
+        fi
+        gradients[a] = next_left;
+        // When a == b, both incoming edges must accumulate independently.
+        val float next_right = gradients[b] + gradients[i];
+        if !finite_f64(next_right); do
+          return Err("nonfinite backward add gradient");
+        fi
+        gradients[b] = next_right;
+      fi
+      if op == 2; do
+        val int a = tape.left[i];
+        val int b = tape.right[i];
+        val float upstream = gradients[i];
+        val float next_left = gradients[a] + (upstream * forward_values[b]);
+        if !finite_f64(next_left); do
+          return Err("nonfinite backward multiply gradient");
+        fi
+        gradients[a] = next_left;
+        val float next_right = gradients[b] + (upstream * forward_values[a]);
+        if !finite_f64(next_right); do
+          return Err("nonfinite backward multiply gradient");
+        fi
+        gradients[b] = next_right;
+      fi
+      if op == 3; do
+        val int a = tape.left[i];
+        if forward_values[a] > 0.0; do
+          val float next_gradient = gradients[a] + gradients[i];
+          if !finite_f64(next_gradient); do
+            return Err("nonfinite backward relu gradient");
+          fi
+          gradients[a] = next_gradient;
+        fi
+      fi
+      // Leaves and stop_gradient have no reverse edges.
+    done
+    return Ok(true);
+  }
+end

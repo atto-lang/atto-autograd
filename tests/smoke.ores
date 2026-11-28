@@ -1,0 +1,168 @@
+import module Assert from "std/assert";
+import class TapeF64 from "../src/tape.ores";
+import module TapeOps from "../src/tape.ores";
+import module ForwardChecked from "../src/forward_checked.ores";
+import module BackwardChecked from "../src/backward_checked.ores";
+
+fnc f(float x): float {
+  return (x * x) + x;
+}
+
+pub routine main(): void {
+  // x=3, y=x*x, z=y+x => z=12, dz/dx=7.
+  val TapeF64 tape = new TapeF64(
+    arr[0, 2, 1],
+    arr[-1, 0, 1],
+    arr[-1, 0, 0],
+    arr[3.0, 0.0, 0.0]
+  );
+  Assert.true_throws(TapeOps.validate_tape(rt borrow tape).is_ok());
+  val List<float> values = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow tape, rt mut borrow values).is_ok());
+  Assert.equal_throws(values[2], 12.0);
+  val List<float> grads = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.backward_f64_into(rt borrow tape, rt borrow values, 2, 1.0, rt mut borrow grads).is_ok());
+  Assert.equal_throws(grads[0], 7.0);
+  Assert.equal_throws(grads[1], 1.0);
+  Assert.equal_throws(grads[2], 1.0);
+
+  val float eps = 0.00001;
+  val float numerical = (f(3.0 + eps) - f(3.0 - eps)) / (2.0 * eps);
+  val float diff = grads[0] - numerical;
+  Assert.true_throws(diff < 0.001 && diff > -0.001);
+
+  // Reject cycles, invalid edges, malformed payloads before output mutation.
+  val TapeF64 bad = new TapeF64(
+    arr[0, 2], arr[-1, 1], arr[-1, 0], arr[3.0, 0.0]
+  );
+  Assert.true_throws(TapeOps.validate_tape(rt borrow bad).is_err());
+  val List<float> untouched = arr[91.0, 92.0];
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow bad, rt mut borrow untouched).is_err());
+  Assert.equal_throws(untouched[0], 91.0);
+  Assert.true_throws(TapeOps.backward_f64_into(rt borrow tape, rt borrow values, 9, 1.0, rt mut borrow grads).is_err());
+  Assert.equal_throws(grads[0], 7.0);
+
+  val List<float> stale_values = arr[3.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.backward_f64_into(rt borrow tape, rt borrow stale_values, 2, 1.0, rt mut borrow grads).is_err());
+  val List<float> tmp = arr[0.0, 0.0, 0.0];
+  val List<float> published = arr[91.0, 92.0, 93.0];
+  Assert.true_throws(ForwardChecked.forward_checked_into(rt borrow bad, rt mut borrow tmp, rt mut borrow published).is_err());
+  Assert.equal_throws(published[0], 91.0);
+  Assert.true_throws(ForwardChecked.forward_checked_into(rt borrow tape, rt mut borrow tmp, rt mut borrow published).is_ok());
+  Assert.equal_throws(published[2], 12.0);
+  val List<float> grad_tmp = arr[0.0, 0.0, 0.0];
+  val List<float> grad_published = arr[99.0, 99.0, 99.0];
+  Assert.true_throws(BackwardChecked.backward_checked_into(
+    rt borrow tape, rt borrow published, 2, 1.0, rt mut borrow grad_tmp, rt mut borrow grad_published
+  ).is_ok());
+  Assert.equal_throws(grad_published[0], 7.0);
+  Assert.true_throws(BackwardChecked.backward_checked_into(
+    rt borrow tape, rt borrow published, 90, 1.0, rt mut borrow grad_tmp, rt mut borrow grad_published
+  ).is_err());
+  Assert.equal_throws(grad_published[0], 7.0);
+  val TapeF64 active = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, -1], arr[2.0, 0.0]
+  );
+  val List<float> activations_relu = arr[0.0, 0.0];
+  val List<float> gradients_relu = arr[0.0, 0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow active, rt mut borrow activations_relu).is_ok());
+  Assert.equal_throws(activations_relu[1], 2.0);
+  Assert.true_throws(TapeOps.backward_f64_into(rt borrow active, rt borrow activations_relu, 1, 1.0, rt mut borrow gradients_relu).is_ok());
+  Assert.equal_throws(gradients_relu[0], 1.0);
+  val TapeF64 inactive = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, -1], arr[-2.0, 0.0]
+  );
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow inactive, rt mut borrow activations_relu).is_ok());
+  Assert.equal_throws(activations_relu[1], 0.0);
+  Assert.true_throws(TapeOps.backward_f64_into(rt borrow inactive, rt borrow activations_relu, 1, 1.0, rt mut borrow gradients_relu).is_ok());
+  Assert.equal_throws(gradients_relu[0], 0.0);
+  val TapeF64 invalid_relu = new TapeF64(
+    arr[0, 3], arr[-1, 0], arr[-1, 0], arr[1.0, 0.0]
+  );
+  Assert.true_throws(TapeOps.validate_tape(rt borrow invalid_relu).is_err());
+  val TapeF64 empty_tape = new TapeF64(arr[], arr[], arr[], arr[]);
+  Assert.true_throws(TapeOps.validate_tape(rt borrow empty_tape).is_err());
+  // x + stop_gradient(x) equals 6 at x = 3, with derivative 1.
+  val TapeF64 detached = new TapeF64(arr[0, 4, 1], arr[-1, 0, 0], arr[-1, -1, 1], arr[3.0, 0.0, 0.0]);
+  val List<float> detached_values = arr[0.0, 0.0, 0.0];
+  val List<float> detached_gradients = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow detached, rt mut borrow detached_values).is_ok());
+  Assert.equal_throws(detached_values[2], 6.0);
+  Assert.true_throws(TapeOps.backward_f64_into(
+    rt borrow detached, rt borrow detached_values, 2, 1.0, rt mut borrow detached_gradients
+  ).is_ok());
+  Assert.equal_throws(detached_gradients[0], 1.0);
+  detached_values[1] = 5.0;
+  Assert.true_throws(TapeOps.backward_f64_into(
+    rt borrow detached, rt borrow detached_values, 2, 1.0, rt mut borrow detached_gradients
+  ).is_err());
+  Assert.equal_throws(detached_gradients[0], 1.0);
+  // A finite tape with an overflowing multiplication must not publish
+  // partial forward activations from the checked API. The raw API may
+  // mutate its scratch output before reporting the arithmetic error.
+  val TapeF64 forward_overflow = new TapeF64(
+    arr[0,0,2],arr[-1,-1,0],arr[-1,-1,1],arr[1.0e308,2.0,0.0]
+  );
+  val List<float> raw_forward_scratch = arr[0.0,0.0,0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(
+    rt borrow forward_overflow, rt mut borrow raw_forward_scratch
+  ).is_err());
+  val List<float> safe_forward_scratch = arr[0.0,0.0,0.0];
+  val List<float> forward_published = arr[77.0,78.0,79.0];
+  Assert.true_throws(ForwardChecked.forward_checked_into(
+    rt borrow forward_overflow, rt mut borrow safe_forward_scratch, rt mut borrow forward_published
+  ).is_err());
+  Assert.equal_throws(forward_published[0],77.0);
+  Assert.equal_throws(forward_published[1],78.0);
+  Assert.equal_throws(forward_published[2],79.0);
+
+  // Forward is finite while a reverse edge overflows: d/d(small)
+  // of (huge * small) with seed 2 exceeds finite f64 range.
+  // The raw API must report Err; the checked API must not publish.
+  val TapeF64 backward_overflow = new TapeF64(
+    arr[0, 0, 2],
+    arr[-1, -1, 0],
+    arr[-1, -1, 1],
+    arr[1.0e308, 1.0e-308, 0.0]
+  );
+  val List<float> finite_forward = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(rt borrow backward_overflow, rt mut borrow finite_forward).is_ok());
+  val List<float> raw_overflow_scratch = arr[0.0, 0.0, 0.0];
+  Assert.true_throws(TapeOps.backward_f64_into(
+    rt borrow backward_overflow, rt borrow finite_forward, 2, 2.0, rt mut borrow raw_overflow_scratch
+  ).is_err());
+  val List<float> overflow_scratch = arr[0.0, 0.0, 0.0];
+  val List<float> overflow_output = arr[87.0, 88.0, 89.0];
+  Assert.true_throws(BackwardChecked.backward_checked_into(
+    rt borrow backward_overflow, rt borrow finite_forward, 2, 2.0, rt mut borrow overflow_scratch, rt mut borrow overflow_output
+  ).is_err());
+  Assert.equal_throws(overflow_output[0], 87.0);
+  Assert.equal_throws(overflow_output[1], 88.0);
+  Assert.equal_throws(overflow_output[2], 89.0);
+  // A shared operand has two incoming edges. The first 1e308
+  // contribution is finite; the second overflows. Do not publish.
+  val TapeF64 duplicate_add_overflow = new TapeF64(
+    arr[0, 1],
+    arr[-1, 0],
+    arr[-1, 0],
+    arr[1.0, 0.0]
+  );
+  val List<float> duplicate_forward = arr[0.0, 0.0];
+  Assert.true_throws(TapeOps.forward_f64_into(
+    rt borrow duplicate_add_overflow, rt mut borrow duplicate_forward
+  ).is_ok());
+  Assert.equal_throws(duplicate_forward[1], 2.0);
+  val List<float> duplicate_raw_grad = arr[0.0, 0.0];
+  Assert.true_throws(TapeOps.backward_f64_into(
+    rt borrow duplicate_add_overflow, rt borrow duplicate_forward, 1, 1.0e308, rt mut borrow duplicate_raw_grad
+  ).is_err());
+  val List<float> duplicate_scratch = arr[0.0, 0.0];
+  val List<float> duplicate_published = arr[63.0, 64.0];
+  Assert.true_throws(BackwardChecked.backward_checked_into(
+    rt borrow duplicate_add_overflow, rt borrow duplicate_forward, 1, 1.0e308, rt mut borrow duplicate_scratch, rt mut borrow duplicate_published
+  ).is_err());
+  Assert.equal_throws(duplicate_published[0], 63.0);
+  Assert.equal_throws(duplicate_published[1], 64.0);
+  stdio.println("ORES_ML_AUTOGRAD_SMOKE_PASS");
+  return;
+}
